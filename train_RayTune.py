@@ -453,5 +453,5 @@ analysis = tune.run(
 
 
 """
-python3 ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --steps 1
+python3 ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --steps 2
 """
