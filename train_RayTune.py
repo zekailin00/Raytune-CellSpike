@@ -64,9 +64,6 @@ def get_parser():
 
     parser.add_argument("-j","--jobId", default=None,
         help="optional, aux info to be stored w/ summary")
-    
-    parser.add_argument("--hparPath", default='./', 
-        help="path to hpar-model definition")
        
     args = parser.parse_args()
     args.train_loss_EOE=True #True # 2nd loss computation at the end of each epoch
@@ -124,6 +121,39 @@ from pprint import pprint
 #--------
 
 class RayTune_CellSpike(Deep_CellSpike):
+
+
+
+    @classmethod #........................
+    def trainer(cls, config, args):
+        print('Cnst:train')
+        obj=cls(**vars(args))
+        obj.read_metaInp(obj.dataPath+obj.metaF)
+        obj.train_hirD={'acc': [],'loss': [],'lr': [],'val_acc': [],'val_loss': []}
+        
+        obj.hparams = config
+           
+          
+        # overwrite some hpar if provided from command line
+        if obj.dropFrac!=None:  
+            obj.hparams['dropFrac']=obj.dropFrac
+        if obj.batch_size!=None:
+            obj.hparams['batch_size']=obj.batch_size
+        if obj.steps!=None:
+            obj.hparams['steps']=obj.steps
+
+        if obj.numFeature!=None:
+            obj.hparams['numFeature']=obj.numFeature
+             
+        # sanity checks
+        assert obj.hparams['dropFrac']>=0
+         
+        # fix None-strings
+        for x in obj.hparams:
+            if obj.hparams[x]=='None': obj.hparams[x]=None
+        obj.sumRec={}
+        return obj
+
     
     def train_model(self):
         '''
@@ -256,72 +286,78 @@ class RayTune_CellSpike(Deep_CellSpike):
     
     
 args=get_parser()
-def training_function(config, checkpoint_dir = None):
-    
-    ##
-    ## building model
-    ##
-    '''
-    ------ first half from train_cellSpike after main-----------
-    --- according to jan's idea, convert config to yaml file
-    --- probably next is to read the file from RayTune_CellSpike instead of Deep_cellspike
-    
-    
-    --- Modifcations by Kevin: replaced Deep_Cellspike.trainer(args) with RayTune_CellSpike.trainer(args). Now deep is assigned
-    --- to a RayTune_CellSpike object instead of a Deep_CellSpike object.
-    --- Also, I set deep.hparams to config directly, no yaml writing necessary. Will convert best_config to yaml only.
-    '''
-    print("training func starts")
+
+def trainining_initialization():
+    """
+    The parent function count the number of times a model is created 
+    which then creates a folder for the output of each model
+    """
+    count = 0
+    model_path = args.outPath
     print("current work dir = " + os.getcwd())
-    deep=RayTune_CellSpike.trainer(args)
-    print("trainer constructed")
+    print("All output of Deep_CellSpike model will be saved to: " + str(model_path))
     
-    deep.hparams = config #sets hparams to config dictionary, overrides whatever hparams were set when constructing deep 
-    plot=Plotter_CellSpike(args,deep.metaD  )
+    #if not os.path.exists(model_path): 
+    #    os.makedirs(model_path)
     
-    deep.init_genetors() # before building model, so data dims are known
-    print("init_genetors gets called")
-    
-    try:
-        deep.build_model()
-    except:
-        print('M: deep.build_model failed') #probably HPAR were pathological
-        exit(0) 
-    
-    if args.trainTime >200: deep.save_model_full() # just to get binary dump of the graph
-    
-    if args.seedWeights=='same' :  args.seedWeights=args.outPath
-    if args.seedWeights:
-        deep.load_weights_only(path=args.seedWeights)
-    
-    sumF=deep.outPath+deep.prjName+'.sum_train.yaml'
-    write_yaml(deep.sumRec, sumF) # to be able to predict while training continus
-    
-    ''' 
-    ##
-    ## training model 
-    ## 
-    --- second half ------------
-    --- probably no need to modify code here
-    --- modify train_model inherited from Deep_cellSpike in RayTune_CellSpike
-    --- it will contain one more callback that reports metric to Raytune
-    --- or other things if needed 
-    
-    ''' 
-    
-    deep.train_model()
-    
-    deep.save_model_full()
-    
-    try:
-        plot.train_history(deep,figId=10)
-    except:
-        deep.sumRec['plots']='failed'
-        print('M: plot.train_history failed')
+    def make_folder(count):
+        model_n_path = model_path + "/model_" + str(count)
+        print("current work dir = " + os.getcwd())
+        print("Model_" + str(count) + " will be save to: " + str(model_n_path))
         
-    write_yaml(deep.sumRec, sumF)
+        if not os.path.exists(model_n_path): 
+            os.makedirs(model_n_path)
+        
+        args.outPath = model_n_path
+            
+        
     
-    plot.display_all('train')
+    def training_function(config, checkpoint_dir = None):
+        nonlocal count
+        count += 1
+        make_folder(count)
+
+        print("training func starts")
+        print("current work dir = " + os.getcwd())
+        deep=RayTune_CellSpike.trainer(config, args)
+        print("trainer constructed")
+
+        plot=Plotter_CellSpike(args,deep.metaD )
+        deep.init_genetors() # before building model, so data dims are known
+        print("init_genetors gets called")
+
+        try:
+            deep.build_model()
+        except:
+            print('M: deep.build_model failed') #probably HPAR were pathological
+            exit(0) 
+
+        if args.trainTime >200: deep.save_model_full() # just to get binary dump of the graph
+
+        if args.seedWeights=='same' :  args.seedWeights=args.outPath
+        if args.seedWeights:
+            deep.load_weights_only(path=args.seedWeights)
+
+        sumF=deep.outPath+deep.prjName+'.sum_train.yaml'
+        write_yaml(deep.sumRec, sumF) # to be able to predict while training continus
+        
+
+
+        deep.train_model()
+
+        deep.save_model_full()
+
+        try:
+            plot.train_history(deep,figId=10)
+        except:
+            deep.sumRec['plots']='failed'
+            print('M: plot.train_history failed')
+
+        write_yaml(deep.sumRec, sumF)
+
+        plot.display_all('train')
+        
+    return training_function
     
 #custom sampler functions for search space. The logic for these functions came from genHPar_CellSpike.py
 
@@ -410,7 +446,7 @@ pbt = PopulationBasedTraining(
 # Metric and mode are redundant so RayTune said to remove them from either pbt or tune.run. Num_samples is the number of trials (different hpam combinations?), # 
 # which is set to 10 for now. Scheduler is the PBT object instatiated above. 
 analysis = tune.run(
-    training_function,
+    trainining_initialization(),
     scheduler=pbt,
     num_samples=1,
     config=config)
