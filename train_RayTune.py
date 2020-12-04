@@ -9,7 +9,7 @@ print('Lpd, devCnt=',len(Lpd), Lpd)
 
 import argparse
 
-# get_parser copied from train_CellSpike.py. This will allow us to specify the same arguments as when we run train_CellSpike.py 
+# get_parser copied from train_CellSpike.py. This will allow us to specify the same arguments as when we run train_CellSpike.py
 
 def get_parser():
     '''This is the same function (same name) from train_CellSpike.py. No modifications needed for now.'''
@@ -30,7 +30,7 @@ def get_parser():
     parser.add_argument("--probeType",  help="probe partition or PCA",default='pca99')
 
     parser.add_argument("-o","--outPath",
-        default='out',help="output path for plots and tables")
+        default='.out',help="output path for plots and tables")
 
     parser.add_argument( "-X","--noXterm", dest='noXterm',
         action='store_true', default=False,
@@ -77,7 +77,7 @@ def get_parser():
         if len(args.numFeature)==1: # Warn: selecting 1 feature which is not soma is not possible with this logic
             args.numFeature=args.numFeature[0]
         else: #assure uniqnenss of elements
-            assert len(args.numFeature)==len(set(args.numFeature))           
+            assert len(args.numFeature)==len(set(args.numFeature))
 
     for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
 
@@ -105,7 +105,7 @@ from Util_CellSpike import MyLearningTracker, MyEpochEndLoss
 from tensorflow.python.keras.models import Model, load_model
 from tensorflow.python.keras.callbacks import EarlyStopping, ModelCheckpoint , ReduceLROnPlateau
 from tensorflow.python.keras.layers import Dense, Dropout,  Input, Conv1D,MaxPool1D,Flatten, Lambda, BatchNormalization
-from  tensorflow.python.keras.layers.advanced_activations import LeakyReLU 
+from  tensorflow.python.keras.layers.advanced_activations import LeakyReLU
 
 # pick one of this data streamers:
 from InpGenDisc_CellSpike import  CellSpike_input_generator
@@ -135,7 +135,7 @@ class RayTune_CellSpike(Deep_CellSpike):
            
           
         # overwrite some hpar if provided from command line
-        if obj.dropFrac!=None:  
+        if obj.dropFrac!=None:
             obj.hparams['dropFrac']=obj.dropFrac
         if obj.batch_size!=None:
             obj.hparams['batch_size']=obj.batch_size
@@ -157,8 +157,8 @@ class RayTune_CellSpike(Deep_CellSpike):
     
     def train_model(self):
         '''
-        ---- This method overrides the one from Deep_CellSpike. It is almost exactly identical 
-        ---- except the callbacks_list now contains a 
+        ---- This method overrides the one from Deep_CellSpike. It is almost exactly identical
+        ---- except the callbacks_list now contains a
         ---- TuneReportCheckpointCallback() object The TuneReportCheckpointCallback
         ---- class handles reporting metrics and checkpoints. The metric it reports is validation loss.
 
@@ -175,9 +175,9 @@ class RayTune_CellSpike(Deep_CellSpike):
         if self.train_loss_EOE:
             print('enable  end-epoch true train-loss as callBack')
             genConf=copy.deepcopy(self.sumRec['inpGen']['train'])
-            # we need much less stats for the EOE loss: 
+            # we need much less stats for the EOE loss:
             genConf['fakeSteps']=self.sumRec['inpGen']['val']['fakeSteps']
-            fileIdxL=genConf['fileIdxL'] 
+            fileIdxL=genConf['fileIdxL']
             if type(fileIdxL)==type(list()): #data-stream
                 nSample=int( len(fileIdxL)/10.)+1  # select only 10% of files
                 fileIdxL=np.random.choice(fileIdxL, nSample, replace=False).tolist()
@@ -208,14 +208,14 @@ class RayTune_CellSpike(Deep_CellSpike):
 
         print('\nTrain_model  trainTime=%.1f(min)'%(self.trainTime/60.),'  modelDesign=', self.modelDesign,'BS=',self.hparams['batch_size'])
 
-        fitVerb=1   # prints live:  [=========>....] - ETA: xx s 
+        fitVerb=1   # prints live:  [=========>....] - ETA: xx s
         if self.verb==2: fitVerb=1
         if self.verb==0: fitVerb=2  # prints 1-line summary at epoch end
         train_state='model_trained'
         for st in range(2): # state-machine
             startTm = time.time()
             print('jan train state:',st)
-            if st==0: 
+            if st==0:
                 epochs=2 ; startTm0=startTm ;  totEpochs=epochs
             if st==1:
                 print(' used time/sec=%.1f'%fitTime)
@@ -224,18 +224,18 @@ class RayTune_CellSpike(Deep_CellSpike):
                     if fitTime/epochs > self.maxEpochTime :
                         print('too slow training, abort it', fitTime/epochs, self.maxEpochTime)
                         train_state='epoch_to_slow'
-                        totEpochs-=1; break 
+                        totEpochs-=1; break
                 if maxEpochs<1 :
                     print('not enough time to run more, finish')
                     train_state='time_limit_reached'
-                    totEpochs-=1; break  
+                    totEpochs-=1; break
                 epochs=maxEpochs
                 print('will train for %d epochs over total of %.1f minutes'%(epochs,self.trainTime/60.))
             # common for both steps:
             #            hir=self.model.fit_generator(  #TF-2.0
             hir=self.model.fit(  # TF-2.1
-                    self.inpGenD['train'],callbacks=callbacks_list, 
-                    epochs=epochs, max_queue_size=10, 
+                    self.inpGenD['train'],callbacks=callbacks_list,
+                    epochs=epochs, max_queue_size=10,
                     workers=1, use_multiprocessing=False,
                     shuffle=self.shuffle_data, verbose=fitVerb,
                     validation_data=self.inpGenD['val'])
@@ -282,14 +282,14 @@ class RayTune_CellSpike(Deep_CellSpike):
         rec['val_loss']=float(lossV)
         rec['steps_per_epoch']=self.inpGenD['train'].__len__()
         rec['state']=train_state
-        self.sumRec.update(rec) 
+        self.sumRec.update(rec)
     
     
 args=get_parser()
 
-def trainining_initialization():
+def training_initialization():
     """
-    The parent function count the number of times a model is created 
+    The parent function count the number of times a model is created
     which then creates a folder for the output of each model
     """
     count = 0
@@ -297,7 +297,7 @@ def trainining_initialization():
     print("current work dir = " + os.getcwd())
     print("All output of Deep_CellSpike model will be saved to: " + str(model_path))
     
-    #if not os.path.exists(model_path): 
+    #if not os.path.exists(model_path):
     #    os.makedirs(model_path)
     
     def make_folder(count):
@@ -305,7 +305,7 @@ def trainining_initialization():
         print("current work dir = " + os.getcwd())
         print("Model_" + str(count) + " will be save to: " + str(model_n_path))
         
-        if not os.path.exists(model_n_path): 
+        if not os.path.exists(model_n_path):
             os.makedirs(model_n_path)
         
         args.outPath = model_n_path
@@ -330,7 +330,7 @@ def trainining_initialization():
             deep.build_model()
         except:
             print('M: deep.build_model failed') #probably HPAR were pathological
-            exit(0) 
+            exit(0)
 
         if args.trainTime >200: deep.save_model_full() # just to get binary dump of the graph
 
@@ -404,7 +404,7 @@ def get_opt(spec):
     optName = str(np.random.choice(['adam','nadam']))
     return [optName, 0.001, 1.1e-7]
 
-# search space 
+# search space
 config = {'myID' : tune.sample_from(lambda spec: 'id1' + ('%.11f'%np.random.uniform())[2:]),
           'inp_batch_norm': True,
           'junk1' : [1],
@@ -416,7 +416,7 @@ config = {'myID' : tune.sample_from(lambda spec: 'id1' + ('%.11f'%np.random.unif
           'fc_dims' : tune.sample_from(get_fc_dims),
           'lastAct' : 'tanh',
           'outAmpl' : 1.2,
-          'dropFrac' : tune.choice([0.01, 0.02, 0.05, 0.10]), 
+          'dropFrac' : tune.choice([0.01, 0.02, 0.05, 0.10]),
           'lossName' : tune.choice(['mse', 'mae']),
           'optimizer' : tune.sample_from(get_opt),
           'batch_size' : tune.sample_from(get_batch_size),
@@ -429,11 +429,11 @@ config = {'myID' : tune.sample_from(lambda spec: 'id1' + ('%.11f'%np.random.unif
 mutation_config = {'conv_kernel' : tune.randint(3, 10),
           'conv_repeat' : tune.randint(3, 10),
           'pool_len' : tune.randint(1, 4),
-          'dropFrac' : tune.choice([0.01, 0.02, 0.05, 0.10]), 
+          'dropFrac' : tune.choice([0.01, 0.02, 0.05, 0.10]),
           'lossName' : tune.choice(['mse', 'mae']),
           }
 
-# Instatiating our PBT object. Metric is validation loss and mode is minimize since we are trying to minimize loss. 
+# Instatiating our PBT object. Metric is validation loss and mode is minimize since we are trying to minimize loss.
 # NOTE: The hyperparam_mutations dictionary was taken from an example and does not apply to our code. I am still figuring out what
 # is the difference between hyperparam_mutations and config since they are both search spaces.
 
@@ -443,10 +443,15 @@ pbt = PopulationBasedTraining(
     mode="min",
     hyperparam_mutations=mutation_config)
 
-# Metric and mode are redundant so RayTune said to remove them from either pbt or tune.run. Num_samples is the number of trials (different hpam combinations?), # 
-# which is set to 10 for now. Scheduler is the PBT object instatiated above. 
+# Metric and mode are redundant so RayTune said to remove them from either pbt or tune.run. Num_samples is the number of trials (different hpam combinations?), #
+# which is set to 10 for now. Scheduler is the PBT object instatiated above.
 analysis = tune.run(
-    trainining_initialization(),
+    training_initialization(),
     scheduler=pbt,
-    num_samples=1,
+    num_samples=10,
     config=config)
+
+
+"""
+python3 ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --steps 1
+"""
