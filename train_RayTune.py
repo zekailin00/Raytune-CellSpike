@@ -20,6 +20,14 @@ def get_parser():
 
     parser.add_argument('--design', dest='modelDesign', default='100165_693_bbp006',
         help=" model design of the network")
+    
+    parser.add_argument('--rayResult', dest='rayResult', default='./ray_results',
+        help="the output directory of raytune")
+    
+    parser.add_argument('--numHparams', dest='numHparams', default='5',
+        help="the number of Raytune Samples")
+    
+    
     parser.add_argument('--venue', dest='formatVenue', choices=['prod','poster'], default='prod',help=" output quality/arangement")
 
     parser.add_argument("--seedWeights",default=None,
@@ -30,7 +38,7 @@ def get_parser():
     parser.add_argument("--probeType",  help="probe partition or PCA",default='pca99')
 
     parser.add_argument("-o","--outPath",
-        default='.out',help="output path for plots and tables")
+        default='out',help="output path for plots and tables")
 
     parser.add_argument( "-X","--noXterm", dest='noXterm',
         action='store_true', default=False,
@@ -448,10 +456,11 @@ pbt = PopulationBasedTraining(
 analysis = tune.run(
     training_initialization(),
     scheduler=pbt,
-    num_samples=10,
-    config=config)
+    num_samples=int(args.numHparams),
+    config=config,
+    local_dir = args.rayResult)
 
 
 """
-python3 ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --steps 2
+python3 ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --steps 5 --rayResult $SCRATCH/ray_results --numHparams 5
 """
