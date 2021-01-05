@@ -13,21 +13,19 @@ import argparse
 
 def get_parser():
     '''This is the same function (same name) from train_CellSpike.py. No modifications needed for now.'''
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2],
         help="increase output verbosity", default=1, dest='verb')
 
-    parser.add_argument('--design', dest='modelDesign', default='100165_693_bbp006',
-        help=" model design of the network")
-    
+    #parser.add_argument('--design', dest='modelDesign', default='100165_693_bbp006',
+    #    help=" model design of the network")
+
     parser.add_argument('--rayResult', dest='rayResult', default='./ray_results',
         help="the output directory of raytune")
-    
     parser.add_argument('--numHparams', dest='numHparams', default='5',
         help="the number of Raytune Samples")
-    
-    
+
     parser.add_argument('--venue', dest='formatVenue', choices=['prod','poster'], default='prod',help=" output quality/arangement")
 
     parser.add_argument("--seedWeights",default=None,
@@ -70,9 +68,9 @@ def get_parser():
     parser.add_argument( "--reduceLR", dest='reduceLRPatience', type=int,
         default=5,help="reduce learning at plateau, patience")
 
-    parser.add_argument("-j","--jobId", default=None,
-        help="optional, aux info to be stored w/ summary")
-       
+    #parser.add_argument("-j","--jobId", default=None,
+    #    help="optional, aux info to be stored w/ summary")
+
     args = parser.parse_args()
     args.train_loss_EOE=True #True # 2nd loss computation at the end of each epoch
     args.shuffle_data=True # use False only for debugging
@@ -138,10 +136,10 @@ class RayTune_CellSpike(Deep_CellSpike):
         obj=cls(**vars(args))
         obj.read_metaInp(obj.dataPath+obj.metaF)
         obj.train_hirD={'acc': [],'loss': [],'lr': [],'val_acc': [],'val_loss': []}
-        
+
         obj.hparams = config
-           
-          
+
+
         # overwrite some hpar if provided from command line
         if obj.dropFrac!=None:
             obj.hparams['dropFrac']=obj.dropFrac
@@ -152,17 +150,17 @@ class RayTune_CellSpike(Deep_CellSpike):
 
         if obj.numFeature!=None:
             obj.hparams['numFeature']=obj.numFeature
-             
+
         # sanity checks
         assert obj.hparams['dropFrac']>=0
-         
+
         # fix None-strings
         for x in obj.hparams:
             if obj.hparams[x]=='None': obj.hparams[x]=None
         obj.sumRec={}
         return obj
 
-    
+
     def train_model(self):
         '''
         ---- This method overrides the one from Deep_CellSpike. It is almost exactly identical
@@ -255,7 +253,7 @@ class RayTune_CellSpike(Deep_CellSpike):
         epochs2=len(hir['loss'])
         totEpochs+=epochs2
         earlyStopOccured=epochs2<epochs
-        
+
         #print('FFF',earlyStopOccured,epochs2, maxEpochs,totEpochs)
         #print('hir keys',hir.keys(),lrCb.hir)
         for obs in hir:
@@ -271,7 +269,7 @@ class RayTune_CellSpike(Deep_CellSpike):
             self.train_hirD['train_loss']=trlsCb.hir[-nn:]
 
         self.train_hirD['stepTimeHist']=self.inpGenD['train'].stepTime
-                    
+
         #report performance for the last epoch
         lossT=self.train_hirD['loss'][-1]
         lossV=self.train_hirD['val_loss'][-1]
@@ -291,8 +289,8 @@ class RayTune_CellSpike(Deep_CellSpike):
         rec['steps_per_epoch']=self.inpGenD['train'].__len__()
         rec['state']=train_state
         self.sumRec.update(rec)
-    
-    
+
+
 args=get_parser()
 
 def training_initialization():
@@ -304,22 +302,22 @@ def training_initialization():
     model_path = args.outPath
     print("current work dir = " + os.getcwd())
     print("All output of Deep_CellSpike model will be saved to: " + str(model_path))
-    
+
     #if not os.path.exists(model_path):
     #    os.makedirs(model_path)
-    
+
     def make_folder(count):
         model_n_path = model_path + "/model_" + str(count)
         print("current work dir = " + os.getcwd())
         print("Model_" + str(count) + " will be save to: " + str(model_n_path))
-        
+
         if not os.path.exists(model_n_path):
             os.makedirs(model_n_path)
-        
+
         args.outPath = model_n_path
-            
-        
-    
+
+
+
     def training_function(config, checkpoint_dir = None):
         nonlocal count
         count += 1
@@ -348,7 +346,7 @@ def training_initialization():
 
         sumF=deep.outPath+deep.prjName+'.sum_train.yaml'
         write_yaml(deep.sumRec, sumF) # to be able to predict while training continus
-        
+
 
 
         deep.train_model()
@@ -364,9 +362,9 @@ def training_initialization():
         write_yaml(deep.sumRec, sumF)
 
         plot.display_all('train')
-        
+
     return training_function
-    
+
 #custom sampler functions for search space. The logic for these functions came from genHPar_CellSpike.py
 
 # sampling conv_filter
@@ -378,7 +376,7 @@ def get_conv_filter(spec):
         fact=np.random.choice([1,2,4])
         filt1=int(min(256,filt1*fact))
         filtL.append(filt1)
-        
+
     return filtL
 
 # sampling fc_dims
@@ -392,7 +390,7 @@ def get_fc_dims(spec):
         fact=np.random.choice([1,2,4])
         filt1=int(min(512,filt1*fact))
         filtL.insert(0,filt1)
-    
+
     return filtL
 
 # generates batch size
@@ -400,7 +398,7 @@ def get_batch_size(spec):
     j=np.random.randint(5,8)
     bs=1<<j
     return bs
-    
+
 #generates LR factor
 def get_reduceLR(spec):
     xx=np.random.uniform(0.2,0.8)
@@ -411,6 +409,14 @@ def get_reduceLR(spec):
 def get_opt(spec):
     optName = str(np.random.choice(['adam','nadam']))
     return [optName, 0.001, 1.1e-7]
+
+
+# Copied from https://github.com/NERSC/slurm-ray-cluster/blob/master/examples/mnist_pytorch_trainable.py
+# Using raytune on a Slurm cluster
+# ip_head and redis_passwords are set by ray cluster shell scripts
+print(os.environ["ip_head"], os.environ["redis_password"])
+ray.init(address='auto', node_ip_address=os.environ["ip_head"].split(":")[0], redis_password=os.environ["redis_password"])
+
 
 # search space
 config = {'myID' : tune.sample_from(lambda spec: 'id1' + ('%.11f'%np.random.uniform())[2:]),
@@ -453,6 +459,8 @@ pbt = PopulationBasedTraining(
 
 # Metric and mode are redundant so RayTune said to remove them from either pbt or tune.run. Num_samples is the number of trials (different hpam combinations?), #
 # which is set to 10 for now. Scheduler is the PBT object instatiated above.
+
+
 analysis = tune.run(
     training_initialization(),
     scheduler=pbt,
