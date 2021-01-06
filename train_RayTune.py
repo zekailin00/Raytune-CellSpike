@@ -18,8 +18,8 @@ def get_parser():
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2],
         help="increase output verbosity", default=1, dest='verb')
 
-    #parser.add_argument('--design', dest='modelDesign', default='100165_693_bbp006',
-    #    help=" model design of the network")
+    parser.add_argument('--design', dest='modelDesign', default='100165_693_bbp006',
+        help=" model design of the network")
 
     parser.add_argument('--rayResult', dest='rayResult', default='./ray_results',
         help="the output directory of raytune")
@@ -68,8 +68,8 @@ def get_parser():
     parser.add_argument( "--reduceLR", dest='reduceLRPatience', type=int,
         default=5,help="reduce learning at plateau, patience")
 
-    #parser.add_argument("-j","--jobId", default=None,
-    #    help="optional, aux info to be stored w/ summary")
+    parser.add_argument("-j","--jobId", default=None,
+        help="optional, aux info to be stored w/ summary")
 
     args = parser.parse_args()
     args.train_loss_EOE=True #True # 2nd loss computation at the end of each epoch
@@ -414,8 +414,8 @@ def get_opt(spec):
 # Copied from https://github.com/NERSC/slurm-ray-cluster/blob/master/examples/mnist_pytorch_trainable.py
 # Using raytune on a Slurm cluster
 # ip_head and redis_passwords are set by ray cluster shell scripts
-print(os.environ["ip_head"], os.environ["redis_password"])
-ray.init(address='auto', node_ip_address=os.environ["ip_head"].split(":")[0], redis_password=os.environ["redis_password"])
+#print(os.environ["ip_head"], os.environ["redis_password"])
+#ray.init(address='auto', node_ip_address=os.environ["ip_head"].split(":")[0], redis_password=os.environ["redis_password"])
 
 
 # search space
@@ -470,5 +470,5 @@ analysis = tune.run(
 
 
 """
-python3 ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --steps 5 --rayResult $SCRATCH/ray_results --numHparams 5
+python ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --steps 5 --rayResult $SCRATCH/ray_results --numHparams 1
 """
