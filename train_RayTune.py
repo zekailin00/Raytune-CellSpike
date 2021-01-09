@@ -90,7 +90,8 @@ def get_parser():
     return args
 
 # Imports the TuneReportCheckpointCallback class, which will handle checkpointing and reporting for us.
-from ray import tune
+
+from ray import tune, init
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.integration.keras import TuneReportCheckpointCallback
 
@@ -411,11 +412,11 @@ def get_opt(spec):
     return [optName, 0.001, 1.1e-7]
 
 
-# Copied from https://github.com/NERSC/slurm-ray-cluster/blob/master/examples/mnist_pytorch_trainable.py
+
 # Using raytune on a Slurm cluster
-# ip_head and redis_passwords are set by ray cluster shell scripts
-#print(os.environ["ip_head"], os.environ["redis_password"])
-#ray.init(address='auto', node_ip_address=os.environ["ip_head"].split(":")[0], redis_password=os.environ["redis_password"])
+print("Connecting to Ray head @ "+os.environ["ip_head"])
+init(address=os.environ["ip_head"])
+print("Connected to Ray")
 
 
 # search space
@@ -470,5 +471,5 @@ analysis = tune.run(
 
 
 """
-python ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --steps 5 --rayResult $SCRATCH/ray_results --numHparams 1
+python ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --steps 10 --rayResult $SCRATCH/ray_results --numHparams 1
 """
