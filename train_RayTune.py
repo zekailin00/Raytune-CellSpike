@@ -91,6 +91,7 @@ def get_parser():
 
 # Imports the TuneReportCheckpointCallback class, which will handle checkpointing and reporting for us.
 
+import ray
 from ray import tune, init
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.integration.keras import TuneReportCheckpointCallback
@@ -418,6 +419,9 @@ print("Connecting to Ray head @ "+os.environ["ip_head"])
 init(address=os.environ["ip_head"])
 print("Connected to Ray")
 
+print("ray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
+print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+print(ray.cluster_resources())
 
 # search space
 config = {'myID' : tune.sample_from(lambda spec: 'id1' + ('%.11f'%np.random.uniform())[2:]),
@@ -464,6 +468,7 @@ pbt = PopulationBasedTraining(
 
 analysis = tune.run(
     training_initialization(),
+    resources_per_trial={'gpu': 1},
     scheduler=pbt,
     num_samples=int(args.numHparams),
     config=config,
