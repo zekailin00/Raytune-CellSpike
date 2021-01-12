@@ -15,6 +15,15 @@ def get_parser():
     '''This is the same function (same name) from train_CellSpike.py. No modifications needed for now.'''
 
     parser = argparse.ArgumentParser()
+    
+    parser.add_argument("-n","--nodes",help="running on CPU or GPU nodes",
+        default='CPU')
+    
+    parser.add_argument("--numCPU",help="number of CPUs for each trial",
+        default=30)
+    parser.add_argument("--numGPU",help="numuber of GPUs for each trial",
+        default=1)
+        
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2],
         help="increase output verbosity", default=1, dest='verb')
 
@@ -414,14 +423,17 @@ def get_opt(spec):
 
 
 
-# Using raytune on a Slurm cluster
 print("Connecting to Ray head @ "+os.environ["ip_head"])
 init(address=os.environ["ip_head"])
 print("Connected to Ray")
 
-print("ray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
-print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
-print(ray.cluster_resources())
+if args.nodes == "GPU":
+    # Using raytune on a Slurm cluster
+    print("ray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
+    print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+    print(ray.cluster_resources())
+
+
 
 # search space
 config = {'myID' : tune.sample_from(lambda spec: 'id1' + ('%.11f'%np.random.uniform())[2:]),
@@ -452,6 +464,15 @@ mutation_config = {'conv_kernel' : tune.randint(3, 10),
           'lossName' : tune.choice(['mse', 'mae']),
           }
 
+#mutation custom explore functions
+def mutation_custom_explore(config):
+    config['conv_filter'] = tune.sample_from(get_conv_filter)
+    config['fc_dims'] = tune.sample_from(get_fc_dims)
+    config['optimizer'] = tune.sample_from(get_opt)
+    config['batch_size'] = tune.sample_from(get_batch_size)
+    config['reduceLR_factor'] = tune.sample_from(get_reduceLR)
+    return config
+
 # Instatiating our PBT object. Metric is validation loss and mode is minimize since we are trying to minimize loss.
 # NOTE: The hyperparam_mutations dictionary was taken from an example and does not apply to our code. I am still figuring out what
 # is the difference between hyperparam_mutations and config since they are both search spaces.
@@ -460,15 +481,22 @@ pbt = PopulationBasedTraining(
     time_attr="training_iteration",
     metric="val_loss",
     mode="min",
-    hyperparam_mutations=mutation_config)
+    hyperparam_mutations=mutation_config,
+    custom_explore_fn=mutation_custom_explore
+    )
 
 # Metric and mode are redundant so RayTune said to remove them from either pbt or tune.run. Num_samples is the number of trials (different hpam combinations?), #
 # which is set to 10 for now. Scheduler is the PBT object instatiated above.
 
 
+if args.nodes == "CPU":
+    resources = {"cpu":int(args.numCPU)}
+else:
+    resources = {"gpu":int(args.numGPU)}
+
 analysis = tune.run(
     training_initialization(),
-    resources_per_trial={'gpu': 1},
+    resources_per_trial=resources,
     scheduler=pbt,
     num_samples=int(args.numHparams),
     config=config,

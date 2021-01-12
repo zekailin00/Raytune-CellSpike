@@ -1,0 +1,82 @@
+Failure # 1 (occurred at 2021-01-11_11-39-41)
+Traceback (most recent call last):
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/tune/trial_runner.py", line 726, in _process_trial
+    result = self.trial_executor.fetch_result(trial)
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/tune/ray_trial_executor.py", line 489, in fetch_result
+    result = ray.get(trial_future[0], timeout=DEFAULT_GET_TIMEOUT)
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/worker.py", line 1452, in get
+    raise value.as_instanceof_cause()
+ray.exceptions.RayTaskError(TuneError): [36mray::ImplicitFunc.train()[39m (pid=49276, ip=128.55.224.192)
+  File "python/ray/_raylet.pyx", line 482, in ray._raylet.execute_task
+  File "python/ray/_raylet.pyx", line 436, in ray._raylet.execute_task.function_executor
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/tune/trainable.py", line 336, in train
+    result = self.step()
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/tune/function_runner.py", line 366, in step
+    self._report_thread_runner_error(block=True)
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/tune/function_runner.py", line 513, in _report_thread_runner_error
+    .format(err_tb_str)))
+ray.tune.error.TuneError: Trial raised an exception. Traceback:
+[36mray::ImplicitFunc.train()[39m (pid=49276, ip=128.55.224.192)
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/keras/engine/training_v2.py", line 767, in on_epoch
+    yield epoch_logs
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/keras/engine/training_v2.py", line 342, in fit
+    total_epochs=epochs)
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/keras/engine/training_v2.py", line 128, in run_one_epoch
+    batch_outs = execution_function(iterator)
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/keras/engine/training_v2_utils.py", line 98, in execution_function
+    distributed_function(input_fn))
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/eager/def_function.py", line 568, in __call__
+    result = self._call(*args, **kwds)
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/eager/def_function.py", line 632, in _call
+    return self._stateless_fn(*args, **kwds)
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/eager/function.py", line 2363, in __call__
+    return graph_function._filtered_call(args, kwargs)  # pylint: disable=protected-access
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/eager/function.py", line 1611, in _filtered_call
+    self.captured_inputs)
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/eager/function.py", line 1692, in _call_flat
+    ctx, args, cancellation_manager=cancellation_manager))
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/eager/function.py", line 545, in call
+    ctx=ctx)
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/eager/execute.py", line 67, in quick_execute
+    six.raise_from(core._status_to_exception(e.code, message), None)
+  File "<string>", line 3, in raise_from
+tensorflow.python.framework.errors_impl.ResourceExhaustedError:  OOM when allocating tensor with shape[2026496,496] and type float on /job:localhost/replica:0/task:0/device:GPU:0 by allocator GPU_0_bfc
+	 [[node Nadam/Nadam/update_58/mul_2 (defined at ./train_RayTune.py:253) ]]
+Hint: If you want to see a list of allocated tensors when OOM happens, add report_tensor_allocations_upon_oom to RunOptions for current allocation info.
+ [Op:__inference_distributed_function_7621]
+
+Function call stack:
+distributed_function
+
+
+During handling of the above exception, another exception occurred:
+
+[36mray::ImplicitFunc.train()[39m (pid=49276, ip=128.55.224.192)
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/tune/function_runner.py", line 248, in run
+    self._entrypoint()
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/tune/function_runner.py", line 316, in entrypoint
+    self._status_reporter.get_checkpoint())
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/tune/function_runner.py", line 575, in _trainable_func
+    output = fn()
+  File "./train_RayTune.py", line 358, in training_function
+    deep.train_model()
+  File "./train_RayTune.py", line 253, in train_model
+    validation_data=self.inpGenD['val'])
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/keras/engine/training.py", line 819, in fit
+    use_multiprocessing=use_multiprocessing)
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/keras/engine/training_v2.py", line 397, in fit
+    prefix='val_')
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/contextlib.py", line 130, in __exit__
+    self.gen.throw(type, value, traceback)
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/keras/engine/training_v2.py", line 771, in on_epoch
+    self.callbacks.on_epoch_end(epoch, epoch_logs)
+  File "/usr/common/software/tensorflow/gpu-tensorflow/2.1.0-py37/lib/python3.7/site-packages/tensorflow_core/python/keras/callbacks.py", line 302, in on_epoch_end
+    callback.on_epoch_end(epoch, logs)
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/tune/integration/keras.py", line 59, in on_epoch_end
+    self._handle(logs, "epoch_end")
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/tune/integration/keras.py", line 291, in _handle
+    self._report._handle(logs, when)
+  File "/global/homes/z/zekailin/.local/cori/gpu-tensorflow2.1.0-py37/lib/python3.7/site-packages/ray/tune/integration/keras.py", line 163, in _handle
+    report_dict[key] = logs[metric]
+KeyError: 'val_loss'
+
