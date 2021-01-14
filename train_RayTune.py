@@ -27,7 +27,7 @@ def get_parser():
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2],
         help="increase output verbosity", default=1, dest='verb')
 
-    parser.add_argument('--design', dest='modelDesign', default='100165_693_bbp006',
+    parser.add_argument('--design', dest='modelDesign', default='Raytune_design',
         help=" model design of the network")
 
     parser.add_argument('--rayResult', dest='rayResult', default='./ray_results',
@@ -504,5 +504,5 @@ analysis = tune.run(
 
 
 """
-python ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --steps 10 --rayResult $SCRATCH/ray_results --numHparams 1
+python ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --rayResult $SCRATCH/ray_results --numHparams 1 --maxEpochTime 4800
 """
