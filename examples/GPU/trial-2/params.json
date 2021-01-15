@@ -1,0 +1,41 @@
+{
+  "batch_size": 64,
+  "conv_filter": [
+    64,
+    64,
+    256,
+    256,
+    256,
+    256,
+    256
+  ],
+  "conv_kernel": 5,
+  "conv_repeat": 4,
+  "dropFrac": 0.02,
+  "fc_dims": [
+    512,
+    512,
+    512,
+    496,
+    248,
+    62,
+    31
+  ],
+  "inp_batch_norm": true,
+  "junk1": [
+    1
+  ],
+  "lastAct": "tanh",
+  "lossName": "mse",
+  "myID": "id134466260478",
+  "numFeature": null,
+  "optimizer": [
+    "nadam",
+    0.001,
+    1.1e-07
+  ],
+  "outAmpl": 1.2,
+  "pool_len": 2,
+  "reduceLR_factor": 0.10339426785106141,
+  "steps": null
+}
