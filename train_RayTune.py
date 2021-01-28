@@ -424,7 +424,7 @@ def get_opt(spec):
 
 
 print("Connecting to Ray head @ "+os.environ["ip_head"])
-init(address=os.environ["ip_head"])
+ray.init(address='auto', _node_ip_address=os.environ["ip_head"].split(":")[0], _redis_password=os.environ["redis_password"])
 print("Connected to Ray")
 
 if args.nodes == "GPU":
