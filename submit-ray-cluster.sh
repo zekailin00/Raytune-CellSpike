@@ -1,5 +1,4 @@
 #!/bin/bash
-
 #SBATCH -C gpu
 #SBATCH --time=00:20:00
 
@@ -25,6 +24,7 @@ numGPU=1
 
 
 # Load modules or your own conda environment here
+module load cgpu
 module load tensorflow/gpu-2.1.0-py37
 
 ################# DON NOT CHANGE THINGS HERE UNLESS YOU KNOW WHAT YOU ARE DOING ###############
