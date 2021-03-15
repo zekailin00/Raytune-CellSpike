@@ -1,20 +1,20 @@
 #!/bin/bash
 #SBATCH -C gpu
-#SBATCH --time=00:20:00
+#SBATCH --time=04:00:00
 
 ### This script works for any number of nodes, Ray will find and manage all resources
-#SBATCH --nodes=2
+#SBATCH --nodes=1
 
 ### Give all resources to a single Ray task, ray can manage the resources internally
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=2
+#SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=80
 
 
-trainTime=80
-useDataFrac=1
-steps=10
-numHparams=5
+trainTime=200
+useDataFrac=0.01
+#steps=10
+numHparams=1
 numGPU=1
 
 # adapted from https://github.com/NERSC/slurm-ray-cluster
@@ -57,6 +57,25 @@ do
 done
 ##############################################################################################
 
+wrkDir=$SCRATCH/ray_results/$SLURM_JOBID
+
+echo Work Directory is $wrkDir
+echo Job ID is $SLURM_JOBID
+
 #### call your code below
-python ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t $trainTime --useDataFrac $useDataFrac --maxEpochTime 4800 --rayResult $SCRATCH/ray_results --numHparams $numHparams --nodes GPU --numGPU $numGPU --steps $steps
+python ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t $trainTime --useDataFrac $useDataFrac --maxEpochTime 4800 --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU 
+
+# move slurm log file and copy Python and shell scripts to SCRATCH directory.
+# to keep track of what Ray Tune designs were executed
+mv ./slurm-$SLURM_JOBID.out $wrkDir
+cp submit-ray-cluster.sh train_RayTune.py $wrkDir
+
 exit
+
+
+'''
+Code from driveTrain.sh 
+
+python -u ./train_CellSpike.py -t $runSec   --verbosity 0  --noXterm --design $design  --outPath   $outDir --dataPath $dataPath --jobId ${SLURM_ARRAY_JOB_ID}/${SLURM_ARRAY_TASK_ID}/${procIdx} --reduceLR 10 --earlyStop 15   >&log.train_$logN
+
+'''

@@ -111,6 +111,7 @@ import os, time
 import warnings
 import socket  # for hostname
 import copy
+import time
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' #Hide messy TensorFlow warnings
 warnings.filterwarnings("ignore") #Hide messy Numpy warnings
@@ -330,6 +331,8 @@ def training_initialization():
 
 
     def training_function(config, checkpoint_dir = None):
+        
+        
         nonlocal count
         count += 1
         make_folder(count)
@@ -347,7 +350,8 @@ def training_initialization():
             deep.build_model()
         except:
             print('M: deep.build_model failed') #probably HPAR were pathological
-            exit(0)
+            raise Exception('Trial failed due to bad hyper parameters')
+            #exit(0)
 
         if args.trainTime >200: deep.save_model_full() # just to get binary dump of the graph
 
@@ -357,8 +361,8 @@ def training_initialization():
 
         sumF=deep.outPath+deep.prjName+'.sum_train.yaml'
         write_yaml(deep.sumRec, sumF) # to be able to predict while training continus
-
-
+        
+        
 
         deep.train_model()
 
@@ -424,6 +428,7 @@ def get_opt(spec):
 
 
 print("Connecting to Ray head @ "+os.environ["ip_head"])
+#init(address=os.environ["ip_head"])
 ray.init(address='auto', _node_ip_address=os.environ["ip_head"].split(":")[0], _redis_password=os.environ["redis_password"])
 print("Connected to Ray")
 
@@ -454,7 +459,7 @@ config = {'myID' : tune.sample_from(lambda spec: 'id1' + ('%.11f'%np.random.unif
           'reduceLR_factor' : tune.sample_from(get_reduceLR),
           'steps' : None,
           }
-
+'''
 #mutation space (for pbt). NOTE: tune.sample_from is not allowed in the mutation space, so for now I will not put them here.
 
 mutation_config = {'conv_kernel' : tune.randint(3, 10),
@@ -465,6 +470,7 @@ mutation_config = {'conv_kernel' : tune.randint(3, 10),
           }
 
 #mutation custom explore functions
+
 def mutation_custom_explore(config):
     config['conv_filter'] = tune.sample_from(get_conv_filter)
     config['fc_dims'] = tune.sample_from(get_fc_dims)
@@ -472,6 +478,7 @@ def mutation_custom_explore(config):
     config['batch_size'] = tune.sample_from(get_batch_size)
     config['reduceLR_factor'] = tune.sample_from(get_reduceLR)
     return config
+
 
 # Instatiating our PBT object. Metric is validation loss and mode is minimize since we are trying to minimize loss.
 # NOTE: The hyperparam_mutations dictionary was taken from an example and does not apply to our code. I am still figuring out what
@@ -484,7 +491,7 @@ pbt = PopulationBasedTraining(
     hyperparam_mutations=mutation_config,
     custom_explore_fn=mutation_custom_explore
     )
-
+'''
 # Metric and mode are redundant so RayTune said to remove them from either pbt or tune.run. Num_samples is the number of trials (different hpam combinations?), #
 # which is set to 10 for now. Scheduler is the PBT object instatiated above.
 
@@ -492,12 +499,12 @@ pbt = PopulationBasedTraining(
 if args.nodes == "CPU":
     resources = {"cpu":int(args.numCPU)}
 else:
-    resources = {"gpu":int(args.numGPU)}
+    resources = {"cpu":10,"gpu":int(args.numGPU)}
 
 analysis = tune.run(
     training_initialization(),
     resources_per_trial=resources,
-    scheduler=pbt,
+    #scheduler=pbt,
     num_samples=int(args.numHparams),
     config=config,
     local_dir = args.rayResult)
