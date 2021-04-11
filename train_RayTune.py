@@ -102,6 +102,8 @@ def get_parser():
 
 import ray
 from ray import tune, init
+from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.integration.keras import TuneReportCheckpointCallback
 
@@ -336,6 +338,49 @@ def training_initialization():
         nonlocal count
         count += 1
         make_folder(count)
+        
+        config['myID'] = 'id1' + ('%.11f'%np.random.uniform())[2:]
+        
+        config['conv_kernel'] = int(config['conv_kernel'])
+        config['conv_repeat'] = int(config['conv_repeat'])
+        config['pool_len'] = int(config['pool_len'])
+        
+        conv_filter = []
+        if not config["conv_filter"]:
+            cf_num_layers = int(config["cf_num_layers"])
+            pwr = 0  # Maybe start with a higher pwr here
+            for i in range(1, cf_num_layers + 1):
+                additional_pwr = int(config[f"filter_{i}"])
+                pwr += additional_pwr
+                filter_size = 2**pwr
+                conv_filter.append(min(256, filter_size))
+            config["conv_filter"] = conv_filter
+        
+        
+        if not config["fc_dims"]:
+            fc_dims = []
+            fc_num_layers = int(config["fc_num_layers"])
+            pwr2 = 0
+            for i in range(1, fc_num_layers + 1):
+                additional_pwr2 = config[f"fc_{i}"]
+                pwr2 += additional_pwr2
+                fc_size = 2**pwr2
+                fc_dims.insert(0, min(512, fc_size))
+            config["fc_dims"] = fc_dims
+        
+        if not config["optimizer"]:
+            optimizer = [config["optName"], 0.001, 1.1e-7]
+            config["optimizer"] = optimizer
+        
+        if not config["batch_size"]:
+            batch_size = 1<<int(config["batch_size_j"])
+            config["batch_size"] = batch_size
+            
+        if not config["reduceLR_factor"]:
+            reduceLR_factor = (config["reduceLR_x"])**2
+            config["reduceLR_factor"] = reduceLR_factor
+            
+        print("DEBUG: ", config)
 
         print("training func starts")
         print("current work dir = " + os.getcwd())
@@ -440,25 +485,6 @@ if args.nodes == "GPU":
 
 
 
-# search space
-config = {'myID' : tune.sample_from(lambda spec: 'id1' + ('%.11f'%np.random.uniform())[2:]),
-          'inp_batch_norm': True,
-          'junk1' : [1],
-          'numFeature' : None,
-          'conv_filter' : tune.sample_from(get_conv_filter),
-          'conv_kernel' : tune.randint(3, 10),
-          'conv_repeat' : tune.randint(3, 10),
-          'pool_len' : tune.randint(1, 4),
-          'fc_dims' : tune.sample_from(get_fc_dims),
-          'lastAct' : 'tanh',
-          'outAmpl' : 1.2,
-          'dropFrac' : tune.choice([0.01, 0.02, 0.05, 0.10]),
-          'lossName' : tune.choice(['mse', 'mae']),
-          'optimizer' : tune.sample_from(get_opt),
-          'batch_size' : tune.sample_from(get_batch_size),
-          'reduceLR_factor' : tune.sample_from(get_reduceLR),
-          'steps' : None,
-          }
 '''
 #mutation space (for pbt). NOTE: tune.sample_from is not allowed in the mutation space, so for now I will not put them here.
 
@@ -492,6 +518,178 @@ pbt = PopulationBasedTraining(
     custom_explore_fn=mutation_custom_explore
     )
 '''
+# search space
+'''
+config = {'myID' : tune.sample_from(lambda spec: 'id1' + ('%.11f'%np.random.uniform())[2:]),
+          'inp_batch_norm': True,
+          'junk1' : [1],
+          'numFeature' : None,
+          'conv_filter' : tune.sample_from(get_conv_filter),
+          'conv_kernel' : tune.randint(3, 10),
+          'conv_repeat' : tune.randint(3, 10),
+          'pool_len' : tune.randint(1, 4),
+          'fc_dims' : tune.sample_from(get_fc_dims),
+          'lastAct' : 'tanh',
+          'outAmpl' : 1.2,
+          'dropFrac' : tune.choice([0.01, 0.02, 0.05, 0.10]),
+          'lossName' : tune.choice(['mse', 'mae']),
+          'optimizer' : tune.sample_from(get_opt),
+          'batch_size' : tune.sample_from(get_batch_size),
+          'reduceLR_factor' : tune.sample_from(get_reduceLR),
+          'steps' : None,
+          }
+'''
+config = {'myID' : None,
+          'inp_batch_norm': True,
+          'junk1' : [1],
+          'numFeature' : None,
+          'conv_filter' : None,
+          "cf_num_layers": tune.quniform(3, 7, 1),
+          "filter_1": tune.quniform(3, 7, 1),
+          "filter_2": tune.randint(0, 3),
+          "filter_3": tune.randint(0, 3),
+          "filter_4": tune.randint(0, 3),
+          "filter_5": tune.randint(0, 3),
+          "filter_6": tune.randint(0, 3),
+          "filter_7": tune.randint(0, 3),
+          'conv_kernel' : tune.quniform(3, 9, 1),
+          'conv_repeat' : tune.quniform(3, 9, 1),
+          'pool_len' : tune.quniform(1, 3, 1),
+          'fc_dims' : None,
+          'fc_num_layers': tune.quniform(2, 7, 1),
+          'fc_1': tune.randint(0, 5),
+          'fc_2': tune.randint(0, 3),
+          'fc_3': tune.randint(0, 3),
+          'fc_4': tune.randint(0, 3),
+          'fc_5': tune.randint(0, 3),
+          'fc_6': tune.randint(0, 3),
+          'fc_7': tune.randint(0, 3),
+          'lastAct' : 'tanh',
+          'outAmpl' : 1.2,
+          'dropFrac' : tune.choice([0.01, 0.02, 0.05, 0.10]),
+          'lossName' : tune.choice(['mse', 'mae']),
+          'optimizer' : None,
+          'optName': tune.choice(['adam','nadam']),
+          'batch_size' : None,
+          'batch_size_j': tune.quniform(5, 7, 1),
+          'reduceLR_factor' : None,
+          'reduceLR_x' : tune.uniform(0.2, 0.8),
+          'steps' : None
+         }
+
+# ASHA Scheduler
+asha = AsyncHyperBandScheduler(time_attr='training_iteration',
+                               metric="val_loss",
+                               mode="min",
+                               grace_period=6)
+
+# HyperOpt
+
+initial_best_config = [{'conv_filter' : [32, 64, 64, 64, 128, 128],
+                        'conv_kernel' : 7,
+                        'conv_repeat' : 1,
+                        'pool_len' : 3,
+                        'fc_dims' : [256, 256, 240],
+                        'dropFrac' : 0.01,
+                        'lossName' : 'mse',
+                        'optimizer' : ['nadam', 0.001, 1.1e-07],
+                        'batch_size' : 128,
+                        'reduceLR_factor' : 0.448298765780917
+                       },
+                       {'conv_filter' : [32, 64, 128, 256, 256],
+                        'conv_kernel' : 3,
+                        'conv_repeat' : 1,
+                        'pool_len' : 4,
+                        'fc_dims' : [256, 256, 256, 120, 30],
+                        'dropFrac' : 0.05,
+                        'lossName' : 'mae',
+                        'optimizer' : ['nadam', 0.001, 1.1e-07],
+                        'batch_size' : 128,
+                        'reduceLR_factor' : 0.40318386178240434
+                       }
+                      ]
+
+initial_best_config2 = [{'myID' : None,
+                        'inp_batch_norm': True,
+                        'junk1' : [1],
+                        'numFeature' : None,
+                        'conv_filter' : None,
+                        "cf_num_layers": 6.0,
+                        "filter_1": 5,
+                        "filter_2": 1,
+                        "filter_3": 0,
+                        "filter_4": 0,
+                        "filter_5": 1,
+                        "filter_6": 0,
+                        "filter_7": 0,
+                        'conv_kernel' : 7.0,
+                        'conv_repeat' : 1.0,
+                        'pool_len' : 3.0,
+                        'fc_dims' : None,
+                        'fc_num_layers': 3.0,
+                        'fc_1': 8,
+                        'fc_2': 0,
+                        'fc_3': 0,
+                        'fc_4': 0,
+                        'fc_5': 0,
+                        'fc_6': 0,
+                        'fc_7': 0,
+                        'lastAct' : 'tanh',
+                        'outAmpl' : 1.2,
+                        'dropFrac' : 0,
+                        'lossName' : 0,
+                        'optimizer' : None,
+                        'optName': 1,
+                        'batch_size' : None,
+                        'batch_size_j': 7.0,
+                        'reduceLR_factor' : None,
+                        'reduceLR_x' : 0.66955116741,
+                        'steps' : None
+                        },
+                        {'myID' : None,
+                        'inp_batch_norm': True,
+                        'junk1' : [1],
+                        'numFeature' : None,
+                        'conv_filter' : None,
+                        "cf_num_layers": 5.0,
+                        "filter_1": 5,
+                        "filter_2": 2,
+                        "filter_3": 1,
+                        "filter_4": 1,
+                        "filter_5": 0,
+                        "filter_6": 0,
+                        "filter_7": 0,
+                        'conv_kernel' : 3.0,
+                        'conv_repeat' : 1.0,
+                        'pool_len' : 4.0,
+                        'fc_dims' : None,
+                        'fc_num_layers': 5.0,
+                        'fc_1': 5,
+                        'fc_2': 2,
+                        'fc_3': 1,
+                        'fc_4': 0,
+                        'fc_5': 0,
+                        'fc_6': 0,
+                        'fc_7': 0,
+                        'lastAct' : 'tanh',
+                        'outAmpl' : 1.2,
+                        'dropFrac' : 2,
+                        'lossName' : 1,
+                        'optimizer' : None,
+                        'optName': 1,
+                        'batch_size' : None,
+                        'batch_size_j': 7.0,
+                        'reduceLR_factor' : None,
+                        'reduceLR_x' : 0.63496760687,
+                        'steps' : None
+                        }
+                       ]
+
+                  
+
+hyperopt = HyperOptSearch(metric="val_loss",
+                          mode="min",
+                          points_to_evaluate=initial_best_config2)
 # Metric and mode are redundant so RayTune said to remove them from either pbt or tune.run. Num_samples is the number of trials (different hpam combinations?), #
 # which is set to 10 for now. Scheduler is the PBT object instatiated above.
 
@@ -504,7 +702,8 @@ else:
 analysis = tune.run(
     training_initialization(),
     resources_per_trial=resources,
-    #scheduler=pbt,
+    scheduler=asha,
+    search_alg=hyperopt,
     num_samples=int(args.numHparams),
     config=config,
     local_dir = args.rayResult)
