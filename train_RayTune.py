@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import sys,os,time
+sys.path.append(os.path.abspath("toolbox"))
 from Plotter_CellSpike import Plotter_CellSpike
 from Deep_CellSpike import Deep_CellSpike
 from Util_IOfunc import write_yaml
@@ -23,80 +25,59 @@ def get_parser():
         default=30)
     parser.add_argument("--numGPU",help="numuber of GPUs for each trial",
         default=1)
-        
-    parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2],
-        help="increase output verbosity", default=1, dest='verb')
-
-    parser.add_argument('--design', dest='modelDesign', default='Raytune_design',
-        help=" model design of the network")
-
+    
     parser.add_argument('--rayResult', dest='rayResult', default='./ray_results',
         help="the output directory of raytune")
     parser.add_argument('--numHparams', dest='numHparams', default='5',
         help="the number of Raytune Samples")
 
-    parser.add_argument('--venue', dest='formatVenue', choices=['prod','poster'], default='prod',help=" output quality/arangement")
+        
+    parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
+    parser.add_argument( "--noHorovod", dest='useHorovod',  action='store_false', default=True, help="disable Horovod to run on 1 node on all CPUs")
+    parser.add_argument("--designPath", default='./',help="path to hpar-model definition")
 
-    parser.add_argument("--seedWeights",default=None,
-        help="seed weights only, after model is created")
+    parser.add_argument('--design', dest='modelDesign', default='smt190927_b_ontra3', help=" model design of the network")
+    parser.add_argument('--venue', dest='formatVenue', default='prod', choices=['prod','poster'],help=" output quality and layout")
+    parser.add_argument("--cellName", type=str, default=None, help="cell shortName , alternative for 1-cell training")
+    
+    parser.add_argument("--seedWeights",default=None, help="seed weights only, after model is created")
 
     parser.add_argument("-d","--dataPath",help="path to input",
-        default='data')
-    parser.add_argument("--probeType",  help="probe partition or PCA",default='pca99')
+        default='/global/homes/b/balewski/prjn/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1') 
+    
+    parser.add_argument("--probeType",default='8inhib157c_3prB8kHz',  help="data partition")
+    parser.add_argument("--numFeature",default=None, type=int, help="if defined, reduces num of input probes.")
+   
+    parser.add_argument("-o","--outPath", default='out',help="output path for plots and tables")
 
-    parser.add_argument("-o","--outPath",
-        default='out',help="output path for plots and tables")
+    parser.add_argument( "-X","--noXterm", dest='noXterm', action='store_true', default=False,  help="disable X-term for batch mode")
 
-    parser.add_argument( "-X","--noXterm", dest='noXterm',
-        action='store_true', default=False,
-        help="disable X-term for batch mode")
+    parser.add_argument("-e", "--epochs", type=int, default=5, dest='goalEpochs', help="training  epochs assuming localSamples*numRanks per epoch")
+    parser.add_argument("-b", "--localBS", type=int, default=None,  help="training local  batch_size")
+    parser.add_argument( "--localSamples", type=int, required=True,  help="samples per worker, it defines 1 epoch")
+    parser.add_argument("--initLRfactor", type=float, default=1., help="scaling factor for initial LRdrop")
+    
+    parser.add_argument("--dropFrac", type=float, default=None, help="drop fraction at all FC layers, default=None, set by hpar")
+    parser.add_argument("--earlyStop", type=int, dest='earlyStopPatience', default=20, help="early stop:  epochs w/o improvement (aka patience), 0=off")
+    parser.add_argument( "--checkPt", dest='checkPtOn', action='store_true',default=True,help="enable check points for weights")
+    
+    parser.add_argument( "--reduceLR", dest='reduceLRPatience', type=int, default=5,help="reduce learning at plateau, patience")
 
-    parser.add_argument("-t", "--trainTime", type=int, default=20,
-        help="training time (seconds)")
-
-    parser.add_argument( "--maxEpochTime", type=int, default=None,
-        help="maximal allowed training/epoch time (seconds)")
-
-    parser.add_argument("-b", "--batch_size", type=int, default=None,
-        help="training batch_size")
-    parser.add_argument( "--steps", type=int, default=None,
-        help="overwrite natural steps per training epoch, default:None, set by generator")
-    parser.add_argument( "--numFeature", type=int, default=None, nargs='+',
-        help="input features, overwrite hpar setting, can be a list")
-    parser.add_argument("--useDataFrac", type=float, default=1.,
-        help="InpGen will use fraction of whole dataset, default is use all data")
-
-    parser.add_argument("--dropFrac", type=float, default=None,
-        help="drop fraction at all FC layers, default=None, set by hpar")
-    parser.add_argument( "-s","--earlyStop", type=int,
-        dest='earlyStopPatience', default=10,
-        help="early stop:  epochs w/o improvement (aka patience), 0=off")
-    parser.add_argument( "--checkPt", dest='checkPtOn',
-        action='store_true',default=True,help="enable check points for weights")
-
-    parser.add_argument( "--reduceLR", dest='reduceLRPatience', type=int,
-        default=5,help="reduce learning at plateau, patience")
-
-    parser.add_argument("-j","--jobId", default=None,
-        help="optional, aux info to be stored w/ summary")
+    parser.add_argument("-j","--jobId", default=None, help="optional, aux info to be stored w/ summary")
 
     args = parser.parse_args()
-    args.train_loss_EOE=True #True # 2nd loss computation at the end of each epoch
+    args.train_loss_EOE=False #True # 2nd loss computation at the end of each epoch
     args.shuffle_data=True # use False only for debugging
 
     args.prjName='cellSpike'
     args.dataPath+='/'
     args.outPath+='/'
-    if args.numFeature!=None:
-        # see Readme.numFeature for the expanation
-        if len(args.numFeature)==1: # Warn: selecting 1 feature which is not soma is not possible with this logic
-            args.numFeature=args.numFeature[0]
-        else: #assure uniqnenss of elements
-            assert len(args.numFeature)==len(set(args.numFeature))
 
-    for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
+    if not args.useHorovod:
+        for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
 
     return args
+
 
 # Imports the TuneReportCheckpointCallback class, which will handle checkpointing and reporting for us.
 
@@ -106,6 +87,7 @@ from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.integration.keras import TuneReportCheckpointCallback
+from ray.tune.suggest import ConcurrencyLimiter
 
 import numpy as np
 
@@ -128,7 +110,7 @@ from tensorflow.python.keras.layers import Dense, Dropout,  Input, Conv1D,MaxPoo
 from  tensorflow.python.keras.layers.advanced_activations import LeakyReLU
 
 # pick one of this data streamers:
-from InpGenDisc_CellSpike import  CellSpike_input_generator
+#from InpGenDisc_CellSpike import  CellSpike_input_generator
 #from InpGenRam_CellSpike import  CellSpike_input_generator
 
 import tensorflow as tf
@@ -342,43 +324,101 @@ def training_initialization():
         config['myID'] = 'id1' + ('%.11f'%np.random.uniform())[2:]
         
         config['conv_kernel'] = int(config['conv_kernel'])
-        config['conv_repeat'] = int(config['conv_repeat'])
         config['pool_len'] = int(config['pool_len'])
         
         conv_filter = []
         if not config["conv_filter"]:
             cf_num_layers = int(config["cf_num_layers"])
-            pwr = 0  # Maybe start with a higher pwr here
-            for i in range(1, cf_num_layers + 1):
-                additional_pwr = int(config[f"filter_{i}"])
-                pwr += additional_pwr
-                filter_size = 2**pwr
-                conv_filter.append(min(256, filter_size))
+            filter_size = int(np.exp(config["filter_1_pre"]))
+            config.append(filter_size)
+            config.pop("filter_1_pre")
+            for i in range(2, cf_num_layers + 1):
+                multiplier = int(config[f"filter_{i}"])
+                filter_size *= multiplier
+                conv_filter.append(filter_size)
+                config.pop(f"filter_{i}")
+            for i in range(cf_num_layers + 1, 8):
+                config.pop(f"filter_{i}")
             config["conv_filter"] = conv_filter
         
         
         if not config["fc_dims"]:
             fc_dims = []
             fc_num_layers = int(config["fc_num_layers"])
-            pwr2 = 0
-            for i in range(1, fc_num_layers + 1):
-                additional_pwr2 = config[f"fc_{i}"]
-                pwr2 += additional_pwr2
-                fc_size = 2**pwr2
+            fc_size = int(np.exp(config["fc_1_pre"]))
+            config.append(fc_size)
+            config.pop("fc_1_pre")
+            for i in range(2, fc_num_layers + 1):
+                multiplier2 = config[f"fc_{i}"]
+                fc_size *= multiplier2
                 fc_dims.insert(0, min(512, fc_size))
+                config.pop(f"fc_{i}")
+            for i in range(fc_num_layers + 1, 8):
+                config.pop(f"fc_{i}")
             config["fc_dims"] = fc_dims
         
         if not config["optimizer"]:
             optimizer = [config["optName"], 0.001, 1.1e-7]
             config["optimizer"] = optimizer
+            config.pop("optName")
         
         if not config["batch_size"]:
             batch_size = 1<<int(config["batch_size_j"])
             config["batch_size"] = batch_size
+            config.pop("batch_size_j")
             
         if not config["reduceLR_factor"]:
             reduceLR_factor = (config["reduceLR_x"])**2
             config["reduceLR_factor"] = reduceLR_factor
+            config.pop("reduceLR_x")
+            
+        #NEW HPAR GROUPING
+        
+        config["cnn_block"] = {}
+        config["fc_block"] = {}
+        config["train_conf"] = {}
+        
+        #block inits
+        cnn_block = config["cnn_block"]
+        fc_block = config["fc_block"]
+        train_conf = config["train_conf"]
+        
+        #convolutional block
+        cnn_block["filters"] = config["conv_filter"]
+        config.pop("conv_filter")
+        cnn_block["kernel"] = config["conv_kernel"]
+        config.pop("conv_kernel")
+        cnn_block["pool_size"] = config["pool_len"]
+        config.pop("pool_len")
+        
+        #fully connected block
+        fc_block["dropFrac"] = np.exp(config["dropFrac_pre"])
+        config.pop("dropFrac_pre")
+        fc_block["units"] = config["fc_dims"]
+        config.pop("fc_dims")
+        
+        #training block
+        train_conf["LRconf"] = {"init": np.exp("initLR_pre"), "min_delta": np.exp("min_deltaLR_pre"), "patience": 8, "reduceFactor": np.exp("reduceLR_pre")} 
+        config.pop("initLR_pre")
+        config.pop("min_deltaLR_pre")
+        config.pop("reduceLR_pre")
+        train_conf["lossName"] = config["lossName"]
+        config.pop("lossName")
+        train_conf["multiAgent"] = {"warmup_epochs": 5}
+        train_conf["optName"] = config["optimizer"][0]
+        config.pop("optimizer")
+        train_conf["localBS"] = config["batch_size"]
+        config.pop("batch_size")
+        
+        
+
+
+        #NEW HPAR
+        config["inpShape"] = [1600, 3]
+        config["outShape"] = 19
+        config["id"] = "id_base_ontra3_HyperOpt" + config['myID']
+        config.drop("myID")
+        
             
         print("DEBUG: ", config)
 
@@ -387,7 +427,8 @@ def training_initialization():
         deep=RayTune_CellSpike.trainer(config, args)
         print("trainer constructed")
 
-        plot=Plotter_CellSpike(args,deep.metaD )
+        if deep.myRank==0:
+            plot=Plotter_CellSpike(args,deep.metaD )
         deep.init_genetors() # before building model, so data dims are known
         print("init_genetors gets called")
 
@@ -398,19 +439,22 @@ def training_initialization():
             raise Exception('Trial failed due to bad hyper parameters')
             #exit(0)
 
-        if args.trainTime >200: deep.save_model_full() # just to get binary dump of the graph
-
+        if deep.myRank==0 and args.goalEpochs >10: deep.save_model_full() # just to get binary dump of the graph
+            
         if args.seedWeights=='same' :  args.seedWeights=args.outPath
         if args.seedWeights:
             deep.load_weights_only(path=args.seedWeights)
 
-        sumF=deep.outPath+deep.prjName+'.sum_train.yaml'
-        write_yaml(deep.sumRec, sumF) # to be able to predict while training continus
+        if deep.myRank==0:
+            sumF=deep.outPath+deep.prjName+'.sum_train.yaml'
+            write_yaml(deep.sumRec, sumF) # to be able to predict while training continus
         
         
 
         deep.train_model()
 
+        if deep.myRank>0: exit(0)
+        
         deep.save_model_full()
 
         try:
@@ -472,10 +516,14 @@ def get_opt(spec):
 
 
 
+#UNCOMMENT WHEN USING SLURM FILES
+
+'''
 print("Connecting to Ray head @ "+os.environ["ip_head"])
 #init(address=os.environ["ip_head"])
 ray.init(address='auto', _node_ip_address=os.environ["ip_head"].split(":")[0], _redis_password=os.environ["redis_password"])
 print("Connected to Ray")
+'''
 
 if args.nodes == "GPU":
     # Using raytune on a Slurm cluster
@@ -539,42 +587,38 @@ config = {'myID' : tune.sample_from(lambda spec: 'id1' + ('%.11f'%np.random.unif
           'steps' : None,
           }
 '''
-config = {'myID' : None,
-          'inp_batch_norm': True,
-          'junk1' : [1],
-          'numFeature' : None,
-          'conv_filter' : None,
-          "cf_num_layers": tune.quniform(3, 7, 1),
-          "filter_1": tune.quniform(3, 7, 1),
-          "filter_2": tune.randint(0, 3),
-          "filter_3": tune.randint(0, 3),
-          "filter_4": tune.randint(0, 3),
-          "filter_5": tune.randint(0, 3),
-          "filter_6": tune.randint(0, 3),
-          "filter_7": tune.randint(0, 3),
-          'conv_kernel' : tune.quniform(3, 9, 1),
-          'conv_repeat' : tune.quniform(3, 9, 1),
-          'pool_len' : tune.quniform(1, 3, 1),
+config = {'conv_filter' : None,
+          "cf_num_layers": tune.choice([3, 4, 5]),
+          "filter_1_pre": tune.uniform(np.log(15), np.log(40)),
+          "filter_2": tune.choice([2, 3]),
+          "filter_3": tune.choice([2, 3]),
+          "filter_4": tune.choice([2, 3]),
+          "filter_5": tune.choice([2, 3]),
+          "filter_6": tune.choice([2, 3]),
+          "filter_7": tune.choice([2, 3]),
+          'conv_kernel' : tune.choice([2, 3, 4]),
+          'pool_len' : tune.choice([2, 3, 4]),
           'fc_dims' : None,
-          'fc_num_layers': tune.quniform(2, 7, 1),
-          'fc_1': tune.randint(0, 5),
-          'fc_2': tune.randint(0, 3),
-          'fc_3': tune.randint(0, 3),
-          'fc_4': tune.randint(0, 3),
-          'fc_5': tune.randint(0, 3),
-          'fc_6': tune.randint(0, 3),
-          'fc_7': tune.randint(0, 3),
-          'lastAct' : 'tanh',
-          'outAmpl' : 1.2,
-          'dropFrac' : tune.choice([0.01, 0.02, 0.05, 0.10]),
-          'lossName' : tune.choice(['mse', 'mae']),
+          'fc_num_layers': tune.choice([3, 4, 5]),
+          'fc_1_pre': tune.uniform(np.log(40), np.log(200)),
+          'fc_2': tune.choice([1, 2, 3]),
+          'fc_3': tune.choice([1, 2, 3]),
+          'fc_4': tune.choice([1, 2, 3]),
+          'fc_5': tune.choice([1, 2, 3]),
+          'fc_6': tune.choice([1, 2, 3]),
+          'fc_7': tune.choice([1, 2, 3]),
+          'dropFrac_pre' : tune.uniform(np.log(0.02), np.log(0.1)),
+          'lossName' : tune.choice(['mse']),
           'optimizer' : None,
-          'optName': tune.choice(['adam','nadam']),
+          'optName': tune.choice(['adam']),
           'batch_size' : None,
-          'batch_size_j': tune.quniform(5, 7, 1),
-          'reduceLR_factor' : None,
-          'reduceLR_x' : tune.uniform(0.2, 0.8),
-          'steps' : None
+          'batch_size_j': tune.quniform(5, 8, 1),
+          'initLR_pre' : tune.uniform(np.log(3e-4), np.log(4e-3)),
+          'reduceLR_pre' : tune.uniform(np.log(0.05), np.log(0.4)),
+          'min_deltaLR_pre': tune.uniform(np.log(3e-5), np.log(1e-4)),
+          'steps' : None,
+          'batch_norm_cnn' : tune.choice([False, True]),
+          'batch_norm_flat' : tune.choice([False, True])
          }
 
 # ASHA Scheduler
@@ -584,7 +628,7 @@ asha = AsyncHyperBandScheduler(time_attr='training_iteration',
                                grace_period=6)
 
 # HyperOpt
-
+'''
 initial_best_config = [{'conv_filter' : [32, 64, 64, 64, 128, 128],
                         'conv_kernel' : 7,
                         'conv_repeat' : 1,
@@ -605,15 +649,14 @@ initial_best_config = [{'conv_filter' : [32, 64, 64, 64, 128, 128],
                         'lossName' : 'mae',
                         'optimizer' : ['nadam', 0.001, 1.1e-07],
                         'batch_size' : 128,
-                        'reduceLR_factor' : 0.40318386178240434
+                        'reduceLR_factor' : 0.40318386178240434,
+                        'batch_norm_cnn' : 1,
+                        'batch_norm_flat' : 1,
                        }
                       ]
 
-initial_best_config2 = [{'myID' : None,
-                        'inp_batch_norm': True,
-                        'junk1' : [1],
-                        'numFeature' : None,
-                        'conv_filter' : None,
+
+initial_best_config2 = [{'conv_filter' : None,
                         "cf_num_layers": 6.0,
                         "filter_1": 5,
                         "filter_2": 1,
@@ -644,13 +687,11 @@ initial_best_config2 = [{'myID' : None,
                         'batch_size_j': 7.0,
                         'reduceLR_factor' : None,
                         'reduceLR_x' : 0.66955116741,
-                        'steps' : None
+                        'steps' : None,
+                        'batch_norm_cnn' : 1,
+                        'batch_norm_flat' : 1,
                         },
-                        {'myID' : None,
-                        'inp_batch_norm': True,
-                        'junk1' : [1],
-                        'numFeature' : None,
-                        'conv_filter' : None,
+                        {'conv_filter' : None,
                         "cf_num_layers": 5.0,
                         "filter_1": 5,
                         "filter_2": 2,
@@ -681,15 +722,90 @@ initial_best_config2 = [{'myID' : None,
                         'batch_size_j': 7.0,
                         'reduceLR_factor' : None,
                         'reduceLR_x' : 0.63496760687,
-                        'steps' : None
+                        'steps' : None,
+                        'batch_norm_cnn' : 1,
+                        'batch_norm_flat' : 1,
+                        },
+                        {'conv_filter' : None,
+                        "cf_num_layers": 4.0,
+                        "filter_1": 6,
+                        "filter_2": 2,
+                        "filter_3": 0,
+                        "filter_4": 0,
+                        "filter_5": 0,
+                        "filter_6": 0,
+                        "filter_7": 0,
+                        'conv_kernel' : 6.0,
+                        'conv_repeat' : 1.0,
+                        'pool_len' : 3.0,
+                        'fc_dims' : None,
+                        'fc_num_layers': 4.0,
+                        'fc_1': 7,
+                        'fc_2': 0,
+                        'fc_3': 2,
+                        'fc_4': 0,
+                        'fc_5': 0,
+                        'fc_6': 0,
+                        'fc_7': 0,
+                        'lastAct' : 'tanh',
+                        'outAmpl' : 1.2,
+                        'dropFrac' : 2,
+                        'lossName' : 0,
+                        'optimizer' : None,
+                        'optName': 0,
+                        'batch_size' : None,
+                        'batch_size_j': 10.0,
+                        'reduceLR_factor' : None,
+                        'reduceLR_x' : 0.63245,
+                        'steps' : None,
+                        'batch_norm_cnn' : 1,
+                        'batch_norm_flat' : 1,
                         }
                        ]
 
-                  
+'''  
+
+initial_best_config3 = [{'conv_filter' : None,
+                     "cf_num_layers": 0,
+                     "filter_1_pre": 3.41,
+                     "filter_2": 1,
+                     "filter_3": 0,
+                     "filter_4": 0,
+                     "filter_5": 0,
+                     "filter_6": 0,
+                     "filter_7": 0,
+                     'conv_kernel' : 2,
+                     'pool_len' : 2,
+                     'fc_dims' : None,
+                     'fc_num_layers': 2,
+                     'fc_1_pre': 4.853,
+                     'fc_2': 1,
+                     'fc_3': 1,
+                     'fc_4': 0,
+                     'fc_5': 0,
+                     'fc_6': 0,
+                     'fc_7': 0,
+                     'dropFrac_pre' : -2.99573227355,
+                     'lossName' : 0,
+                     'optimizer' : None,
+                     'optName': 0,
+                     'batch_size' : None,
+                     'batch_size_j': 7,
+                     'initLR_pre' : -7.60090245954,
+                     'reduceLR_pre' : -2.65926003693,
+                     'min_deltaLR_pre': -10.4143131763,
+                     'steps' : None,
+                     'batch_norm_cnn' : 1,
+                     'batch_norm_flat' : 1
+         }
+]
 
 hyperopt = HyperOptSearch(metric="val_loss",
                           mode="min",
-                          points_to_evaluate=initial_best_config2)
+                          points_to_evaluate=initial_best_config3,
+                          n_initial_points=4)
+hyperopt_limited = ConcurrencyLimiter(hyperopt, max_concurrent=4)
+
 # Metric and mode are redundant so RayTune said to remove them from either pbt or tune.run. Num_samples is the number of trials (different hpam combinations?), #
 # which is set to 10 for now. Scheduler is the PBT object instatiated above.
 
@@ -703,12 +819,15 @@ analysis = tune.run(
     training_initialization(),
     resources_per_trial=resources,
     scheduler=asha,
-    search_alg=hyperopt,
+    search_alg=hyperopt_limited,
     num_samples=int(args.numHparams),
     config=config,
     local_dir = args.rayResult)
 
 
 """
-python ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t 60 --useDataFrac 0.05 --rayResult $SCRATCH/ray_results --numHparams 1 --maxEpochTime 4800
+python ./train_RayTune.py   --localSamples 30000 --noHorovod --dataPath /global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1 --probeType 8inhib157c_3prB8kHz --design a2f791f3a_ontra3 --cellName bbp012 --rayResult $SCRATCH/ray_results/$SLURM_JOBID
+ 
+8inhib157c_3prB8kHz
+
 """
