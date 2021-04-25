@@ -130,31 +130,52 @@ class RayTune_CellSpike(Deep_CellSpike):
     def trainer(cls, config, args):
         print('Cnst:train')
         obj=cls(**vars(args))
+        # initialize Horovod - if requested
+        if obj.useHorovod:
+            obj.config_horovod()
+            if obj.verb:
+                for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
+        else:
+            obj.myRank=0
+            obj.numRanks=1
+            obj.hvd=None
+            print('Horovod disabled')
+
+        if obj.verb:
+            print('Cnst:train, myRank=',obj.myRank)
+            print('deep-libs imported TF ver:',tf.__version__,' elaT=%.1f sec,'%(time.time() - startT0))
+            
+            #gLpd=tf.config.list_physical_devices('GPU')
+            #gprint('Lpd, devCnt=',len(Lpd), Lpd)
+            
         obj.read_metaInp(obj.dataPath+obj.metaF)
         obj.train_hirD={'acc': [],'loss': [],'lr': [],'val_acc': [],'val_loss': []}
-
+        obj.sumRec={}
+        
         obj.hparams = config
 
 
         # overwrite some hpar if provided from command line
-        if obj.dropFrac!=None:
-            obj.hparams['dropFrac']=obj.dropFrac
-        if obj.batch_size!=None:
-            obj.hparams['batch_size']=obj.batch_size
-        if obj.steps!=None:
-            obj.hparams['steps']=obj.steps
+        if obj.dropFrac!=None:  
+            obj.hparams['fc_block']['dropFrac']=obj.dropFrac
+        
+        if obj.localBS!=None:
+            obj.hparams['train_conf']['localBS']=obj.localBS
 
         if obj.numFeature!=None:
-            obj.hparams['numFeature']=obj.numFeature
+            obj.hparams['inpShape'][1]=obj.numFeature
 
+        LRconf=obj.hparams['train_conf']['LRconf']
+        LRconf['init']*=obj.initLRfactor
+        if obj.verb: print('use initLR=%.3g'%LRconf['init'])
+            
         # sanity checks
-        assert obj.hparams['dropFrac']>=0
-
-        # fix None-strings
-        for x in obj.hparams:
-            if obj.hparams[x]=='None': obj.hparams[x]=None
-        obj.sumRec={}
+        assert obj.hparams['fc_block']['dropFrac']>=0
+        assert obj.hparams['train_conf']['localBS']>=1
+        assert obj.hparams['inpShape'][1]>0
+        
         return obj
+
 
 
     def train_model(self):
@@ -165,92 +186,87 @@ class RayTune_CellSpike(Deep_CellSpike):
         ---- class handles reporting metrics and checkpoints. The metric it reports is validation loss.
 
         '''
-        print('training initiating')
-        if self.verb==0: print('train silently ')
+        if self.verb==0: print('train silently, myRank=',self.myRank)
+        hpar=self.hparams
+        callbacks_list = [TuneReportCheckpointCallback(metrics = ['val_loss'])]
 
-        callbacks_list = [TuneReportCheckpointCallback(metrics = ['val_loss'])] #callbacks_list contains a TuneReportCheckpointCallback object that handles checkpointing and reporting the validation loss to Tune.
-        print('callbacks_list initiated')
+        if self.useHorovod:
+            # Horovod: broadcast initial variable states from rank 0 to all other processes.
+            # This is necessary to ensure consistent initialization of all workers when
+            # training is started with random weights or restored from a checkpoint.
+            callbacks_list.append(self.hvd.callbacks.BroadcastGlobalVariablesCallback(0))
+            # Note: This callback must be in the list before the ReduceLROnPlateau,
+            # TensorBoard or other metrics-based callbacks.
+            callbacks_list.append(self.hvd.callbacks.MetricAverageCallback())
+            #Scale the learning rate `lr = 1.0` ---> `lr = 1.0 * hvd.size()` before
+            # the first five epochs. See https://arxiv.org/abs/1706.02677 for details.
+
+            mutliAgent=hpar['train_conf']['multiAgent']
+            if mutliAgent['warmup_epochs']>0 :
+                callbacks_list.append(self.hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=mutliAgent['warmup_epochs'], verbose=self.verb))
+                if self.verb: print('added LearningRateWarmupCallback(%d epochs)'%mutliAgent['warmup_epochs'])
+        
         lrCb=MyLearningTracker()
         callbacks_list.append(lrCb)
 
         trlsCb=None
         if self.train_loss_EOE:
             print('enable  end-epoch true train-loss as callBack')
+            assert self.cellName==None  # not tested
             genConf=copy.deepcopy(self.sumRec['inpGen']['train'])
             # we need much less stats for the EOE loss:
-            genConf['fakeSteps']=self.sumRec['inpGen']['val']['fakeSteps']
-            fileIdxL=genConf['fileIdxL']
-            if type(fileIdxL)==type(list()): #data-stream
-                nSample=int( len(fileIdxL)/10.)+1  # select only 10% of files
-                fileIdxL=np.random.choice(fileIdxL, nSample, replace=False).tolist()
-            else: # data-in-RAM
-                fileIdxL=max(1, fileIdxL//20)  # select 5% of frames
-            genConf['fileIdxL']=fileIdxL
-            genConf['name']='trainEOE'
+            genConf['numLocalSamples']//=8 # needs less data
+            genConf['name']='EOF'+genConf['name']
+
             inpGen=CellSpike_input_generator(genConf,verb=1)
             trlsCb=MyEpochEndLoss(inpGen)
             callbacks_list.append(trlsCb)
 
-        if self.earlyStopPatience>0:
-            earlyStop=EarlyStopping(monitor='val_loss', patience=self.earlyStopPatience, verbose=1, min_delta=2.e-4, mode='auto')
-            callbacks_list.append(earlyStop)
-            print('enabled EarlyStopping, patience=',self.earlyStopPatience)
-
-        if self.checkPtOn:
+        if self.checkPtOn and self.myRank==0:
             outF5w=self.outPath+'/'+self.prjName+'.weights_best.h5'
             chkPer=1
             ckpt=ModelCheckpoint(outF5w, save_best_only=True, save_weights_only=True, verbose=1, period=chkPer,monitor='val_loss')
             callbacks_list.append(ckpt)
-            print('enabled ModelCheckpoint, save_freq=',chkPer)
+            if self.verb: print('enabled ModelCheckpoint, save_freq=',chkPer)
 
-        if self.reduceLRPatience>0:
-            redu_lr = ReduceLROnPlateau(monitor='val_loss', factor=self.hparams['reduceLR_factor'], patience=self.reduceLRPatience, min_lr=0.0, verbose=1,min_delta=0.003)
+        LRconf=hpar['train_conf']['LRconf']
+        if LRconf['patience']>0:
+            [pati,fact]=LRconf['patience'],LRconf['reduceFactor']
+            redu_lr = ReduceLROnPlateau(monitor='val_loss', factor=fact, patience=pati, min_lr=0.0, verbose=self.verb,min_delta=LRconf['min_delta'])
             callbacks_list.append(redu_lr)
-            print('enabled ReduceLROnPlateau, patience=',self.reduceLRPatience,',factor=',self.hparams['reduceLR_factor'])
+            if self.verb: print('enabled ReduceLROnPlateau, patience=%d, factor =%.2f'%(pati,fact))
 
-        print('\nTrain_model  trainTime=%.1f(min)'%(self.trainTime/60.),'  modelDesign=', self.modelDesign,'BS=',self.hparams['batch_size'])
+        if self.earlyStopPatience>0:
+            earlyStop=EarlyStopping(monitor='val_loss', patience=self.earlyStopPatience, verbose=self.verb, min_delta=LRconf['min_delta'])
+            callbacks_list.append(earlyStop)
+            if self.verb: print('enabled EarlyStopping, patience=',self.earlyStopPatience)
 
-        fitVerb=1   # prints live:  [=========>....] - ETA: xx s
+        #pprint(hpar)
+        if self.verb: print('\nTrain_model  goalEpochs=%d'%(self.goalEpochs),'  modelDesign=', self.modelDesign,'localBS=',hpar['train_conf']['localBS'],'globBS=',hpar['train_conf']['localBS']*self.numRanks)
+
+        fitVerb=1   # prints live:  [=========>....] - ETA: xx s 
         if self.verb==2: fitVerb=1
         if self.verb==0: fitVerb=2  # prints 1-line summary at epoch end
-        train_state='model_trained'
-        for st in range(2): # state-machine
-            startTm = time.time()
-            print('jan train state:',st)
-            if st==0:
-                epochs=2 ; startTm0=startTm ;  totEpochs=epochs
-            if st==1:
-                print(' used time/sec=%.1f'%fitTime)
-                maxEpochs=int(0.95*epochs*self.trainTime/fitTime) -2  # 0.95 is contingency
-                if self.maxEpochTime!=None:
-                    if fitTime/epochs > self.maxEpochTime :
-                        print('too slow training, abort it', fitTime/epochs, self.maxEpochTime)
-                        train_state='epoch_to_slow'
-                        totEpochs-=1; break
-                if maxEpochs<1 :
-                    print('not enough time to run more, finish')
-                    train_state='time_limit_reached'
-                    totEpochs-=1; break
-                epochs=maxEpochs
-                print('will train for %d epochs over total of %.1f minutes'%(epochs,self.trainTime/60.))
-            # common for both steps:
-            #            hir=self.model.fit_generator(  #TF-2.0
-            hir=self.model.fit(  # TF-2.1
-                    self.inpGenD['train'],callbacks=callbacks_list,
-                    epochs=epochs, max_queue_size=10,
-                    workers=1, use_multiprocessing=False,
-                    shuffle=self.shuffle_data, verbose=fitVerb,
-                    validation_data=self.inpGenD['val'])
-            print('model fit complete')
-            fitTime=time.time() - startTm
-        # correct the fit time  to account for all process
-        fitTime=time.time() - startTm0
-        hir=hir.history
-        epochs2=len(hir['loss'])
-        totEpochs+=epochs2
-        earlyStopOccured=epochs2<epochs
 
-        #print('FFF',earlyStopOccured,epochs2, maxEpochs,totEpochs)
+        if self.numRanks>1:  # change the logic
+            if self.verb :
+                fitVerb=2  
+            else:
+              fitVerb=0 # keras is silent  
+
+        startTm = time.time()
+        hir=self.model.fit(  # TF-2.1
+            self.inpGenD['train'],callbacks=callbacks_list, 
+            epochs=self.goalEpochs, max_queue_size=10, 
+            workers=1, use_multiprocessing=False,
+            shuffle=self.shuffle_data, verbose=fitVerb,
+            validation_data=self.inpGenD['val']
+        )
+        fitTime=time.time() - startTm
+        hir=hir.history
+        totEpochs=len(hir['loss'])
+        earlyStopOccured=totEpochs<self.goalEpochs
+        
         #print('hir keys',hir.keys(),lrCb.hir)
         for obs in hir:
             rec=[ float(x) for x in hir[obs] ]
@@ -265,27 +281,36 @@ class RayTune_CellSpike(Deep_CellSpike):
             self.train_hirD['train_loss']=trlsCb.hir[-nn:]
 
         self.train_hirD['stepTimeHist']=self.inpGenD['train'].stepTime
-
+                    
         #report performance for the last epoch
         lossT=self.train_hirD['loss'][-1]
         lossV=self.train_hirD['val_loss'][-1]
         lossVbest=min(self.train_hirD['val_loss'])
 
-        hpar=self.hparams
-        print('\n End Val Loss=%s:%.3f, best:%.3f'%(hpar['lossName'],lossV,lossVbest),', %d totEpochs, fit=%.1f min'%(totEpochs,fitTime/60.),' hpar:',hpar)
+        if self.verb:
+            print('end-hpar:')
+            pprint(hpar) 
+            print('\n End Val Loss=%s:%.3f, best:%.3f'%( hpar['train_conf']['lossName'],lossV,lossVbest),', %d totEpochs, fit=%.1f min, earlyStop=%r'%(totEpochs,fitTime/60.,earlyStopOccured))
         self.train_sec=fitTime
+
+        xxV=np.array(self.train_hirD['loss'][-5:])
+        trainLoss_avr_last5=-1
+        if xxV.shape[0]>3: trainLoss_avr_last5=xxV.mean()
 
         # add info to summary
         rec={}
         rec['earlyStopOccured']=int(earlyStopOccured)
         rec['fitTime_min']=fitTime/60.
         rec['totEpochs']=totEpochs
+        rec['trainLoss_avr_last5']=float(trainLoss_avr_last5)
         rec['train_loss']=float(lossT)
         rec['val_loss']=float(lossV)
         rec['steps_per_epoch']=self.inpGenD['train'].__len__()
-        rec['state']=train_state
+        rec['state']='model_trained'
+        rec['rank']=self.myRank
+        rec['num_ranks']=self.numRanks
+        rec['num_open_files']=len(self.inpGenD['train'].conf['cellList'])
         self.sumRec.update(rec)
-
 
 args=get_parser()
 
@@ -330,7 +355,7 @@ def training_initialization():
         if not config["conv_filter"]:
             cf_num_layers = int(config["cf_num_layers"])
             filter_size = int(np.exp(config["filter_1_pre"]))
-            config.append(filter_size)
+            conv_filter.append(filter_size)
             config.pop("filter_1_pre")
             for i in range(2, cf_num_layers + 1):
                 multiplier = int(config[f"filter_{i}"])
@@ -346,7 +371,7 @@ def training_initialization():
             fc_dims = []
             fc_num_layers = int(config["fc_num_layers"])
             fc_size = int(np.exp(config["fc_1_pre"]))
-            config.append(fc_size)
+            conv_filter.append(fc_size)
             config.pop("fc_1_pre")
             for i in range(2, fc_num_layers + 1):
                 multiplier2 = config[f"fc_{i}"]
@@ -366,11 +391,6 @@ def training_initialization():
             batch_size = 1<<int(config["batch_size_j"])
             config["batch_size"] = batch_size
             config.pop("batch_size_j")
-            
-        if not config["reduceLR_factor"]:
-            reduceLR_factor = (config["reduceLR_x"])**2
-            config["reduceLR_factor"] = reduceLR_factor
-            config.pop("reduceLR_x")
             
         #NEW HPAR GROUPING
         
@@ -398,7 +418,8 @@ def training_initialization():
         config.pop("fc_dims")
         
         #training block
-        train_conf["LRconf"] = {"init": np.exp("initLR_pre"), "min_delta": np.exp("min_deltaLR_pre"), "patience": 8, "reduceFactor": np.exp("reduceLR_pre")} 
+        train_conf["LRconf"] = {"init": np.exp(config["initLR_pre"]), "min_delta": np.exp(config["min_deltaLR_pre"]), "patience": 8, 
+                                "reduceFactor": np.exp(config["reduceLR_pre"])} 
         config.pop("initLR_pre")
         config.pop("min_deltaLR_pre")
         config.pop("reduceLR_pre")
@@ -417,7 +438,7 @@ def training_initialization():
         config["inpShape"] = [1600, 3]
         config["outShape"] = 19
         config["id"] = "id_base_ontra3_HyperOpt" + config['myID']
-        config.drop("myID")
+        config.pop("myID")
         
             
         print("DEBUG: ", config)
@@ -518,12 +539,12 @@ def get_opt(spec):
 
 #UNCOMMENT WHEN USING SLURM FILES
 
-'''
+
 print("Connecting to Ray head @ "+os.environ["ip_head"])
 #init(address=os.environ["ip_head"])
 ray.init(address='auto', _node_ip_address=os.environ["ip_head"].split(":")[0], _redis_password=os.environ["redis_password"])
 print("Connected to Ray")
-'''
+
 
 if args.nodes == "GPU":
     # Using raytune on a Slurm cluster
