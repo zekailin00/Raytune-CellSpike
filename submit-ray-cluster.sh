@@ -60,7 +60,7 @@ do
 done
 ##############################################################################################
 
-wrkDir=$SCRATCH/ray_results_ontra3/$SLURM_JOBID
+wrkDir=$SCRATCH/ray_results_bbp012/$SLURM_JOBID
 
 echo Work Directory is $wrkDir
 echo Job ID is $SLURM_JOBID
