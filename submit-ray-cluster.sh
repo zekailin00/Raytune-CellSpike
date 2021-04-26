@@ -1,21 +1,24 @@
 #!/bin/bash
 #SBATCH -C gpu
-#SBATCH --time=04:00:00
+#SBATCH --time=00:10:00
 
 ### This script works for any number of nodes, Ray will find and manage all resources
 #SBATCH --nodes=1
 
 ### Give all resources to a single Ray task, ray can manage the resources internally
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=1
+#SBATCH --gpus-per-task=3
 #SBATCH --cpus-per-task=80
 
 
-trainTime=200
-useDataFrac=0.01
-#steps=10
-numHparams=1
+numHparams=3
 numGPU=1
+localSamples=30000
+cellName=bbp012
+probeType=8inhib157c_3prB8kHz
+dataPath=/global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1
+design=a2f791f3a_ontra3
+epochs=5
 
 # adapted from https://github.com/NERSC/slurm-ray-cluster
 
@@ -57,13 +60,20 @@ do
 done
 ##############################################################################################
 
-wrkDir=$SCRATCH/ray_results/$SLURM_JOBID
+wrkDir=$SCRATCH/ray_results_ontra3/$SLURM_JOBID
 
 echo Work Directory is $wrkDir
 echo Job ID is $SLURM_JOBID
 
+
+
+
+
 #### call your code below
-python ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t $trainTime --useDataFrac $useDataFrac --maxEpochTime 4800 --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU 
+
+python ./train_RayTune.py   --localSamples $localSamples --noHorovod --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU 
+
+
 
 # move slurm log file and copy Python and shell scripts to SCRATCH directory.
 # to keep track of what Ray Tune designs were executed
@@ -72,10 +82,3 @@ cp submit-ray-cluster.sh train_RayTune.py $wrkDir
 
 exit
 
-
-'''
-Code from driveTrain.sh 
-
-python -u ./train_CellSpike.py -t $runSec   --verbosity 0  --noXterm --design $design  --outPath   $outDir --dataPath $dataPath --jobId ${SLURM_ARRAY_JOB_ID}/${SLURM_ARRAY_TASK_ID}/${procIdx} --reduceLR 10 --earlyStop 15   >&log.train_$logN
-
-'''
