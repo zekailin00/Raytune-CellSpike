@@ -18,6 +18,12 @@ def get_parser():
 
     parser = argparse.ArgumentParser()
     
+    parser.add_argument('--restoreFile', dest='restoreFile', default="searcher_state.pkl",
+                        help="name of searcher state file")
+    
+    parser.add_argument('--restorePath', dest='restorePath', default=False,
+                        help="restore previous Ray Tune Training")
+    
     parser.add_argument("-n","--nodes",help="running on CPU or GPU nodes",
         default='CPU')
     
@@ -821,11 +827,6 @@ initial_best_config3 = [{'conv_filter' : None,
          }
 ]
 
-hyperopt = HyperOptSearch(metric="val_loss",
-                          mode="min",
-                          points_to_evaluate=initial_best_config3,
-                          n_initial_points=4)
-hyperopt_limited = ConcurrencyLimiter(hyperopt, max_concurrent=4)
 
 # Metric and mode are redundant so RayTune said to remove them from either pbt or tune.run. Num_samples is the number of trials (different hpam combinations?), #
 # which is set to 10 for now. Scheduler is the PBT object instatiated above.
@@ -835,6 +836,24 @@ if args.nodes == "CPU":
     resources = {"cpu":int(args.numCPU)}
 else:
     resources = {"cpu":10,"gpu":int(args.numGPU)}
+    
+    
+    
+hyperopt = HyperOptSearch(metric="val_loss", mode="min", 
+                          points_to_evaluate=initial_best_config3, 
+                          n_initial_points=4)
+if args.restorePath:
+    path = args.restorePath + "/experiment/" + args.restoreFile
+    print('Restore from ' + path)
+    hyperopt.restore(path)
+    args.rayResult = args.restorePath
+    print("Training logs will be saved to " + args.rayResult)
+    
+    
+hyperopt_limited = ConcurrencyLimiter(hyperopt, max_concurrent=4)
+
+
+    
 
 analysis = tune.run(
     training_initialization(),
@@ -843,12 +862,8 @@ analysis = tune.run(
     search_alg=hyperopt_limited,
     num_samples=int(args.numHparams),
     config=config,
+    name='experiment',
     local_dir = args.rayResult)
 
-
-"""
-python ./train_RayTune.py   --localSamples 30000 --noHorovod --dataPath /global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1 --probeType 8inhib157c_3prB8kHz --design a2f791f3a_ontra3 --cellName bbp012 --rayResult $SCRATCH/ray_results/$SLURM_JOBID
- 
-8inhib157c_3prB8kHz
-
-"""
+print("Searcher_state is saved to "+args.rayResult + "/experiment/searcher_state.pkl")
+hyperopt.save(args.rayResult + "/experiment/searcher_state.pkl")
