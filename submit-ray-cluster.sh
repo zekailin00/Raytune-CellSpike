@@ -1,21 +1,31 @@
 #!/bin/bash
 #SBATCH -C gpu
-#SBATCH --time=00:20:00
+#SBATCH --time=00:10:00
 
 ### This script works for any number of nodes, Ray will find and manage all resources
-#SBATCH --nodes=2
+#SBATCH --nodes=1
 
 ### Give all resources to a single Ray task, ray can manage the resources internally
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=2
+#SBATCH --gpus-per-task=3
 #SBATCH --cpus-per-task=80
 
 
-trainTime=80
-useDataFrac=1
-steps=10
-numHparams=5
+
+###### IMPORTANT ######
+# training configuration
+# comment out restoreID if starting a new training
+restoreID=1856049
+numHparams=3
 numGPU=1
+localSamples=30000
+cellName=bbp012
+probeType=8inhib157c_3prB8kHz
+dataPath=/global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1
+design=a2f791f3a_ontra3
+epochs=5
+
+
 
 # adapted from https://github.com/NERSC/slurm-ray-cluster
 
@@ -57,6 +67,47 @@ do
 done
 ##############################################################################################
 
-#### call your code below
-python ./train_RayTune.py --dataPath /global/homes/b/balewski/prjn/neuronBBP-pack40kHzDisc/probe_quad/bbp153 --probeType quad -t $trainTime --useDataFrac $useDataFrac --maxEpochTime 4800 --rayResult $SCRATCH/ray_results --numHparams $numHparams --nodes GPU --numGPU $numGPU --steps $steps
+
+
+restorePath=$SCRATCH/ray_results_bbp012/$restoreID
+echo "Current Submission ID: $SLURM_JOBID"
+echo "Restore Path: $restorePath"
+
+wrkDir=$SCRATCH/ray_results_bbp012/$SLURM_JOBID
+echo Work Directory is $wrkDir
+echo Job ID is $SLURM_JOBID
+
+
+if [ -z "$restoreID" ]
+then
+
+    python ./train_RayTune.py   --localSamples $localSamples --noHorovod --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU 
+
+
+    echo "RestoreID is empty. Log files will be moved to the current submission"
+    cd $SCRATCH/ray_results_bbp012/$SLURM_JOBID
+    mkdir submission-$SLURM_JOBID
+    cd $HOME/master
+    mv ./slurm-$SLURM_JOBID.out $wrkDir/submission-$SLURM_JOBID
+    cp submit-ray-cluster.sh train_RayTune.py $wrkDir/submission-$SLURM_JOBID
+
+else
+
+
+    python ./train_RayTune.py   --localSamples $localSamples --noHorovod --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --restorePath $restorePath 
+
+
+
+    echo "Log files will be moved to $restoreID submission"
+    cd $SCRATCH/ray_results_bbp012/$restoreID
+    mkdir submission-$SLURM_JOBID
+    cd $HOME/master
+    mv ./slurm-$SLURM_JOBID.out $SCRATCH/ray_results_bbp012/$restoreID/submission-$SLURM_JOBID
+    cp submit-ray-cluster.sh train_RayTune.py $SCRATCH/ray_results_bbp012/$restoreID/submission-$SLURM_JOBID
+    
+fi
+
+
+
 exit
+
