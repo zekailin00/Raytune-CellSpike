@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH -C gpu -J Ray
-#SBATCH --time=00:10:00
+#SBATCH --time=08:00:00
 
 ### This script works for any number of nodes, Ray will find and manage all resources
-#SBATCH --nodes=1
+#SBATCH --nodes=2
 
 ### Give all resources to a single Ray task, ray can manage the resources internally
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=3
+#SBATCH --gpus-per-task=8
 #SBATCH --cpus-per-task=80
 
 
@@ -15,15 +15,15 @@
 ###### IMPORTANT ######
 # training configuration
 # comment out restoreID if starting a new training
-#restoreID=1856049
-numHparams=3
-numGPU=1
-localSamples=30000
+# restoreID=1856049
+numHparams=16
+numGPU=4
+localSamples=609000
 cellName=bbp012
 probeType=8inhib157c_3prB8kHz
 dataPath=/global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1
 design=a2f791f3a_ontra3
-epochs=10
+epochs=100
 
 
 
