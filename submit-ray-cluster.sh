@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -C gpu
+#SBATCH -C gpu -J Ray
 #SBATCH --time=00:10:00
 
 ### This script works for any number of nodes, Ray will find and manage all resources
@@ -15,7 +15,7 @@
 ###### IMPORTANT ######
 # training configuration
 # comment out restoreID if starting a new training
-restoreID=1856049
+#restoreID=1856049
 numHparams=3
 numGPU=1
 localSamples=30000
@@ -23,7 +23,7 @@ cellName=bbp012
 probeType=8inhib157c_3prB8kHz
 dataPath=/global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1
 design=a2f791f3a_ontra3
-epochs=5
+epochs=10
 
 
 
@@ -78,23 +78,28 @@ echo Work Directory is $wrkDir
 echo Job ID is $SLURM_JOBID
 
 
+bash -c "nvidia-smi -l 10 >&gpu_utilization-$SLURM_JOBID.smi &"
+
 if [ -z "$restoreID" ]
 then
 
-    python ./train_RayTune.py   --localSamples $localSamples --noHorovod --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU 
+    echo "CMD: python ./train_RayTune.py  --noHorovod --localSamples $localSamples --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU "
+
+    python ./train_RayTune.py  --noHorovod --localSamples $localSamples --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU 
 
 
     echo "RestoreID is empty. Log files will be moved to the current submission"
     cd $SCRATCH/ray_results_bbp012/$SLURM_JOBID
     mkdir submission-$SLURM_JOBID
     cd $HOME/master
-    mv ./slurm-$SLURM_JOBID.out $wrkDir/submission-$SLURM_JOBID
+    mv ./gpu_utilization-$SLURM_JOBID.smi ./slurm-$SLURM_JOBID.out $wrkDir/submission-$SLURM_JOBID
     cp submit-ray-cluster.sh train_RayTune.py $wrkDir/submission-$SLURM_JOBID
 
 else
 
+    echo "CMD: python ./train_RayTune.py  --noHorovod --localSamples $localSamples --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --restorePath $restorePath "
 
-    python ./train_RayTune.py   --localSamples $localSamples --noHorovod --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --restorePath $restorePath 
+    python ./train_RayTune.py  --noHorovod --localSamples $localSamples --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --restorePath $restorePath 
 
 
 
@@ -102,7 +107,7 @@ else
     cd $SCRATCH/ray_results_bbp012/$restoreID
     mkdir submission-$SLURM_JOBID
     cd $HOME/master
-    mv ./slurm-$SLURM_JOBID.out $SCRATCH/ray_results_bbp012/$restoreID/submission-$SLURM_JOBID
+    mv ./gpu_utilization-$SLURM_JOBID.smi ./slurm-$SLURM_JOBID.out $SCRATCH/ray_results_bbp012/$restoreID/submission-$SLURM_JOBID
     cp submit-ray-cluster.sh train_RayTune.py $SCRATCH/ray_results_bbp012/$restoreID/submission-$SLURM_JOBID
     
 fi

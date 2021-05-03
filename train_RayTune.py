@@ -7,7 +7,9 @@ from Util_IOfunc import write_yaml
 
 import tensorflow as tf
 Lpd=tf.config.list_physical_devices('GPU')
+print('GPU info (train_Raytune)')
 print('Lpd, devCnt=',len(Lpd), Lpd)
+#gpus-per-task * nodes
 
 import argparse
 
@@ -38,7 +40,7 @@ def get_parser():
         help="the number of Raytune Samples")
 
         
-    parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
+    parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=2, dest='verb')
     parser.add_argument( "--noHorovod", dest='useHorovod',  action='store_false', default=True, help="disable Horovod to run on 1 node on all CPUs")
     parser.add_argument("--designPath", default='./',help="path to hpar-model definition")
 
@@ -151,8 +153,9 @@ class RayTune_CellSpike(Deep_CellSpike):
             print('Cnst:train, myRank=',obj.myRank)
             print('deep-libs imported TF ver:',tf.__version__,' elaT=%.1f sec,'%(time.time() - startT0))
             
-            #gLpd=tf.config.list_physical_devices('GPU')
-            #gprint('Lpd, devCnt=',len(Lpd), Lpd)
+            print('GPU info (Deep_CellSpike)')
+            Lpd=tf.config.list_physical_devices('GPU')
+            print('Lpd, devCnt=',len(Lpd), Lpd)
             
         obj.read_metaInp(obj.dataPath+obj.metaF)
         obj.train_hirD={'acc': [],'loss': [],'lr': [],'val_acc': [],'val_loss': []}
@@ -554,6 +557,7 @@ print("Connected to Ray")
 
 if args.nodes == "GPU":
     # Using raytune on a Slurm cluster
+    print('GPU info (read from ray)')
     print("ray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
     print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
     print(ray.cluster_resources())
