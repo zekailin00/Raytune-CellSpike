@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH -C gpu
-#SBATCH --time=00:10:00
+#SBATCH --time=01:00:00
 
 ### This script works for any number of nodes, Ray will find and manage all resources
 #SBATCH --nodes=1
 
 ### Give all resources to a single Ray task, ray can manage the resources internally
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=3
+#SBATCH --gpus-per-task=4
 #SBATCH --cpus-per-task=80
 
 
@@ -15,15 +15,15 @@
 ###### IMPORTANT ######
 # training configuration
 # comment out restoreID if starting a new training
-restoreID=1856049
-numHparams=3
+#restoreID=1856049
+numHparams=5
 numGPU=1
-localSamples=30000
+localSamples=609000
 cellName=bbp012
 probeType=8inhib157c_3prB8kHz
 dataPath=/global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1
 design=a2f791f3a_ontra3
-epochs=5
+epochs=100
 
 
 
@@ -81,7 +81,7 @@ echo Job ID is $SLURM_JOBID
 if [ -z "$restoreID" ]
 then
 
-    python ./train_RayTune.py   --localSamples $localSamples --noHorovod --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU 
+    python ./train_RayTune.py   --localSamples $localSamples --noHorovod --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --epochs $epochs
 
 
     echo "RestoreID is empty. Log files will be moved to the current submission"
@@ -94,7 +94,7 @@ then
 else
 
 
-    python ./train_RayTune.py   --localSamples $localSamples --noHorovod --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --restorePath $restorePath 
+    python ./train_RayTune.py   --localSamples $localSamples --noHorovod --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --epochs $epochs --restorePath $restorePath 
 
 
 
