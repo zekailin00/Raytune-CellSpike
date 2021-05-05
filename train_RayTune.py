@@ -7,9 +7,7 @@ from Util_IOfunc import write_yaml
 
 import tensorflow as tf
 Lpd=tf.config.list_physical_devices('GPU')
-print('GPU info (train_Raytune)')
 print('Lpd, devCnt=',len(Lpd), Lpd)
-#gpus-per-task * nodes
 
 import argparse
 
@@ -40,7 +38,7 @@ def get_parser():
         help="the number of Raytune Samples")
 
         
-    parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=2, dest='verb')
+    parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
     parser.add_argument( "--noHorovod", dest='useHorovod',  action='store_false', default=True, help="disable Horovod to run on 1 node on all CPUs")
     parser.add_argument("--designPath", default='./',help="path to hpar-model definition")
 
@@ -153,9 +151,8 @@ class RayTune_CellSpike(Deep_CellSpike):
             print('Cnst:train, myRank=',obj.myRank)
             print('deep-libs imported TF ver:',tf.__version__,' elaT=%.1f sec,'%(time.time() - startT0))
             
-            print('GPU info (Deep_CellSpike)')
-            Lpd=tf.config.list_physical_devices('GPU')
-            print('Lpd, devCnt=',len(Lpd), Lpd)
+            #gLpd=tf.config.list_physical_devices('GPU')
+            #gprint('Lpd, devCnt=',len(Lpd), Lpd)
             
         obj.read_metaInp(obj.dataPath+obj.metaF)
         obj.train_hirD={'acc': [],'loss': [],'lr': [],'val_acc': [],'val_loss': []}
@@ -557,7 +554,6 @@ print("Connected to Ray")
 
 if args.nodes == "GPU":
     # Using raytune on a Slurm cluster
-    print('GPU info (read from ray)')
     print("ray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
     print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
     print(ray.cluster_resources())
@@ -618,6 +614,7 @@ config = {'myID' : tune.sample_from(lambda spec: 'id1' + ('%.11f'%np.random.unif
           'steps' : None,
           }
 '''
+#narrow space
 config = {'conv_filter' : None,
           "cf_num_layers": tune.choice([3, 4, 5]),
           "filter_1_pre": tune.uniform(np.log(15), np.log(40)),
@@ -651,6 +648,41 @@ config = {'conv_filter' : None,
           'batch_norm_cnn' : tune.choice([False, True]),
           'batch_norm_flat' : tune.choice([False, True])
          }
+
+#wide space
+config_wide1 = {'conv_filter' : None,
+                "cf_num_layers": tune.choice([3, 4, 5, 6]),
+                "filter_1_pre": tune.uniform(np.log(10), np.log(50)),
+                "filter_2": tune.choice([1, 2, 3, 4]),
+                "filter_3": tune.choice([1, 2, 3, 4]),
+                "filter_4": tune.choice([1, 2, 3, 4]),
+                "filter_5": tune.choice([1, 2, 3, 4]),
+                "filter_6": tune.choice([1, 2, 3, 4]),
+                "filter_7": tune.choice([1, 2, 3, 4]),
+                'conv_kernel' : tune.choice([2, 3, 4, 5, 6]),
+                'pool_len' : tune.choice([2, 3, 4]),
+                'fc_dims' : None,
+                'fc_num_layers': tune.choice([2, 3, 4, 5]),
+                'fc_1_pre': tune.uniform(np.log(20), np.log(200)),
+                'fc_2': tune.choice([1, 2, 3, 4]),
+                'fc_3': tune.choice([1, 2, 3, 4]),
+                'fc_4': tune.choice([1, 2, 3, 4]),
+                'fc_5': tune.choice([1, 2, 3, 4]),
+                'fc_6': tune.choice([1, 2, 3, 4]),
+                'fc_7': tune.choice([1, 2, 3, 4]),
+                'dropFrac_pre' : tune.uniform(np.log(0.02), np.log(0.4)),
+                'lossName' : tune.choice(['mse']),
+                'optimizer' : None,
+                'optName': tune.choice(['adam']),
+                'batch_size' : None,
+                'batch_size_j': tune.quniform(5, 12, 1),
+                'initLR_pre' : tune.uniform(np.log(3e-4), np.log(1e-2)),
+                'reduceLR_pre' : tune.uniform(np.log(0.05), np.log(0.4)),
+                'min_deltaLR_pre': tune.uniform(np.log(3e-5), np.log(1e-4)),
+                'steps' : None,
+                'batch_norm_cnn' : tune.choice([False, True]),
+                'batch_norm_flat' : tune.choice([False, True])
+               }
 
 # ASHA Scheduler
 asha = AsyncHyperBandScheduler(time_attr='training_iteration',
