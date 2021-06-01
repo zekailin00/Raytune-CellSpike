@@ -7,7 +7,9 @@ from Util_IOfunc import write_yaml
 
 import tensorflow as tf
 Lpd=tf.config.list_physical_devices('GPU')
+print('GPU info (train_Raytune)')
 print('Lpd, devCnt=',len(Lpd), Lpd)
+#gpus-per-task * nodes
 
 import argparse
 
@@ -95,13 +97,15 @@ from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.integration.keras import TuneReportCheckpointCallback
 from ray.tune.suggest import ConcurrencyLimiter
 
+from ray.tune.integration.horovod import DistributedTrainableCreator
+
 import numpy as np
 
-import os, time
+import os, time, datetime
 import warnings
 import socket  # for hostname
 import copy
-import time
+import hashlib, json
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' #Hide messy TensorFlow warnings
 warnings.filterwarnings("ignore") #Hide messy Numpy warnings
@@ -126,7 +130,8 @@ import h5py
 
 from numpy import linalg as LA  # for eigen vals
 from pprint import pprint
-#--------
+
+
 
 class RayTune_CellSpike(Deep_CellSpike):
 
@@ -151,8 +156,9 @@ class RayTune_CellSpike(Deep_CellSpike):
             print('Cnst:train, myRank=',obj.myRank)
             print('deep-libs imported TF ver:',tf.__version__,' elaT=%.1f sec,'%(time.time() - startT0))
             
-            #gLpd=tf.config.list_physical_devices('GPU')
-            #gprint('Lpd, devCnt=',len(Lpd), Lpd)
+            print('GPU info (Deep_CellSpike)')
+            Lpd=tf.config.list_physical_devices('GPU')
+            print('Lpd, devCnt=',len(Lpd), Lpd)
             
         obj.read_metaInp(obj.dataPath+obj.metaF)
         obj.train_hirD={'acc': [],'loss': [],'lr': [],'val_acc': [],'val_loss': []}
@@ -317,6 +323,7 @@ class RayTune_CellSpike(Deep_CellSpike):
         rec['num_ranks']=self.numRanks
         rec['num_open_files']=len(self.inpGenD['train'].conf['cellList'])
         self.sumRec.update(rec)
+        
 
 args=get_parser()
 
@@ -325,35 +332,35 @@ def training_initialization():
     The parent function count the number of times a model is created
     which then creates a folder for the output of each model
     """
-    count = 0
+    
     model_path = args.outPath
     print("current work dir = " + os.getcwd())
     print("All output of Deep_CellSpike model will be saved to: " + str(model_path))
 
-    #if not os.path.exists(model_path):
-    #    os.makedirs(model_path)
-
-    def make_folder(count):
-        model_n_path = model_path + "/model_" + str(count)
-        print("current work dir = " + os.getcwd())
-        print("Model_" + str(count) + " will be save to: " + str(model_n_path))
-
-        if not os.path.exists(model_n_path):
-            os.makedirs(model_n_path)
-
-        args.outPath = model_n_path
-
-
 
     def training_function(config, checkpoint_dir = None):
         
+        """
         
-        nonlocal count
-        count += 1
-        make_folder(count)
+        # Removed due to being incompatible with horovod rank
         
         config['myID'] = 'id1' + ('%.11f'%np.random.uniform())[2:]
+        config["id"] = "id_base_ontra3_HyperOpt" + config['myID']
+        config.pop("myID")
+        """
         
+        # Hashing the config dictionary into a 8-digit ID
+        trialID = int(hashlib.sha1(json.dumps(config).encode("utf-8")).hexdigest(), 16) % (10 ** 8)
+        config["id"] = args.rayResult.split('/')[-1]+"-{date:%Y\%m\%d_%H:%M}".format(date=datetime.datetime.now())+"-ID"+str(trialID)
+        print("Training Initialized - " + config["id"])
+        
+        args.outPath = model_path + "/" + config["id"] + "/"
+        try:
+            if not os.path.exists(args.outPath):
+                    os.makedirs(args.outPath)
+        except:
+            print("The folder has already been created.")
+            
         config['conv_kernel'] = int(config['conv_kernel'])
         config['pool_len'] = int(config['pool_len'])
         
@@ -431,7 +438,8 @@ def training_initialization():
         config.pop("reduceLR_pre")
         train_conf["lossName"] = config["lossName"]
         config.pop("lossName")
-        train_conf["multiAgent"] = {"warmup_epochs": 5}
+        train_conf["multiAgent"] = {"warmup_epochs": 0}
+        # to-do: LearningRateWarmupCallback is having some issues, so set this to 0 for now
         train_conf["optName"] = config["optimizer"][0]
         config.pop("optimizer")
         train_conf["localBS"] = config["batch_size"]
@@ -443,17 +451,16 @@ def training_initialization():
         #NEW HPAR
         config["inpShape"] = [1600, 3]
         config["outShape"] = 19
-        config["id"] = "id_base_ontra3_HyperOpt" + config['myID']
-        config.pop("myID")
         
             
         print("DEBUG: ", config)
-
         print("training func starts")
         print("current work dir = " + os.getcwd())
         deep=RayTune_CellSpike.trainer(config, args)
         print("trainer constructed")
-
+        
+        
+        
         if deep.myRank==0:
             plot=Plotter_CellSpike(args,deep.metaD )
         deep.init_genetors() # before building model, so data dims are known
@@ -477,9 +484,12 @@ def training_initialization():
             write_yaml(deep.sumRec, sumF) # to be able to predict while training continus
         
         
-
+        
         deep.train_model()
-
+        
+        """
+        # does not work with Ray Horovod integration, remove exit(0)
+        
         if deep.myRank>0: exit(0)
         
         deep.save_model_full()
@@ -493,6 +503,24 @@ def training_initialization():
         write_yaml(deep.sumRec, sumF)
 
         plot.display_all('train')
+        """
+        
+        if deep.myRank==0: 
+        
+            deep.save_model_full()
+
+            try:
+                plot.train_history(deep,figId=10)
+            except:
+                deep.sumRec['plots']='failed'
+                print('M: plot.train_history failed')
+
+            write_yaml(deep.sumRec, sumF)
+
+            plot.display_all('train')
+        
+        
+        
 
     return training_function
 
@@ -554,6 +582,7 @@ print("Connected to Ray")
 
 if args.nodes == "GPU":
     # Using raytune on a Slurm cluster
+    print('GPU info (read from ray)')
     print("ray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
     print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
     print(ray.cluster_resources())
@@ -648,6 +677,7 @@ config = {'conv_filter' : None,
           'batch_norm_cnn' : tune.choice([False, True]),
           'batch_norm_flat' : tune.choice([False, True])
          }
+
 
 #wide space
 config_wide1 = {'conv_filter' : None,
@@ -874,32 +904,37 @@ else:
     resources = {"cpu":10,"gpu":int(args.numGPU)}
     
     
-    
+#to-do: update  points_to_evaluate for ray 1.3.0
 hyperopt = HyperOptSearch(metric="val_loss", mode="min", 
-                          points_to_evaluate=initial_best_config3, 
+                          #points_to_evaluate=initial_best_config3, 
                           n_initial_points=4)
+
+local_dir = ""
 if args.restorePath:
     path = args.restorePath + "/experiment/" + args.restoreFile
     print('Restore from ' + path)
     hyperopt.restore(path)
-    args.rayResult = args.restorePath
-    print("Training logs will be saved to " + args.rayResult)
+    local_dir = args.restorePath
+    print("Training logs will be saved to " + local_dir)
+else:
+    local_dir = args.rayResult
+        
     
     
 hyperopt_limited = ConcurrencyLimiter(hyperopt, max_concurrent=4)
 
+trainable = DistributedTrainableCreator(training_initialization(), num_slots=int(args.numGPU), use_gpu=True)
 
-    
 
 analysis = tune.run(
-    training_initialization(),
-    resources_per_trial=resources,
+    trainable,
+    #resources_per_trial=resources,
     scheduler=asha,
     search_alg=hyperopt_limited,
     num_samples=int(args.numHparams),
     config=config,
     name='experiment',
-    local_dir = args.rayResult)
+    local_dir = local_dir)
 
-print("Searcher_state is saved to "+args.rayResult + "/experiment/searcher_state.pkl")
-hyperopt.save(args.rayResult + "/experiment/searcher_state.pkl")
+print("Searcher_state is saved to "+local_dir + "/experiment/searcher_state.pkl")
+hyperopt.save(local_dir + "/experiment/searcher_state.pkl")
