@@ -72,6 +72,8 @@ def get_parser():
     parser.add_argument( "--reduceLR", dest='reduceLRPatience', type=int, default=5,help="reduce learning at plateau, patience")
 
     parser.add_argument("-j","--jobId", default=None, help="optional, aux info to be stored w/ summary")
+    parser.add_argument('--maxConcurrent', type = int, default=None, dest = 'max_concurrent',
+                        help="max concurrent trials set by ConcurrencyLimit")
 
     args = parser.parse_args()
     args.train_loss_EOE=False #True # 2nd loss computation at the end of each epoch
@@ -378,6 +380,7 @@ def training_initialization():
             for i in range(cf_num_layers + 1, 8):
                 config.pop(f"filter_{i}")
             config["conv_filter"] = conv_filter
+            config.pop("cf_num_layers")
         
         
         if not config["fc_dims"]:
@@ -394,6 +397,7 @@ def training_initialization():
             for i in range(fc_num_layers + 1, 8):
                 config.pop(f"fc_{i}")
             config["fc_dims"] = fc_dims
+            config.pop("fc_num_layers")
         
         if not config["optimizer"]:
             optimizer = [config["optName"], 0.001, 1.1e-7]
@@ -921,7 +925,7 @@ else:
         
     
     
-hyperopt_limited = ConcurrencyLimiter(hyperopt, max_concurrent=4)
+hyperopt_limited = ConcurrencyLimiter(hyperopt, max_concurrent=args.max_concurrent)
 
 trainable = DistributedTrainableCreator(training_initialization(), num_slots=int(args.numGPU), use_gpu=True)
 
@@ -934,7 +938,8 @@ analysis = tune.run(
     num_samples=int(args.numHparams),
     config=config,
     name='experiment',
-    local_dir = local_dir)
+    local_dir = local_dir) 
+
 
 print("Searcher_state is saved to "+local_dir + "/experiment/searcher_state.pkl")
 hyperopt.save(local_dir + "/experiment/searcher_state.pkl")

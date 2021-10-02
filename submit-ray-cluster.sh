@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH -C gpu -J RayTune
-#SBATCH --time=00:15:00
+#SBATCH --time=00:30:00
 
 ### This script works for any number of nodes, Ray will find and manage all resources
 #SBATCH --nodes=1
 
 ### Give all resources to a single Ray task, ray can manage the resources internally
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=8
+#SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=80
 
 
@@ -18,7 +18,7 @@
 #restoreID=1967117 # comment out restoreID if starting a new training
 
 numHparams=4
-numGPU=4
+numGPU=1
 globalSamples=12000
 epochs=10
 
@@ -27,6 +27,8 @@ cellName=bbp012
 probeType=8inhib157c_3prB8kHz
 dataPath=/global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1
 outPath=out # if more than one submission will be running at the same time, outPaths cannot be the same
+
+maxConcurrent=4
 
 
 # adapted from https://github.com/NERSC/slurm-ray-cluster
@@ -87,8 +89,7 @@ then
 
     echo "CMD: python ./train_RayTune.py --localSamples $localSamples --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --epochs $epochs --outPath $outPath"
 
-    python ./train_RayTune.py --localSamples $localSamples --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --epochs $epochs --outPath $outPath
-
+    python ./train_RayTune.py --localSamples $localSamples --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --epochs $epochs --outPath $outPath --maxConcurrent $maxConcurrent 
 
     echo "RestoreID is empty. Log files will be moved to the current submission folder"
     cd $wrkDir
@@ -98,12 +99,15 @@ then
     cp -r ./$outPath $wrkDir
     rm -r ./$outPath
     cp submit-ray-cluster.sh train_RayTune.py $wrkDir/submission-$SLURM_JOBID
-
+    cp tune_summary_writer.py $wrkDir/experiment
+    cd $wrkDir/experiment
+    python ./tune_summary_writer.py --jobID $SLURM_JOBID --cellName $cellName --epochSize $globalSamples --maxConcurrent $maxConcurrent --numGPU $numGPU
+    
 else
 
     echo "CMD: python ./train_RayTune.py  --localSamples $localSamples --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --epochs $epochs --restorePath $restorePath --outPath $outPath "
 
-    python ./train_RayTune.py  --localSamples $localSamples --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --epochs $epochs --restorePath $restorePath --outPath $outPath
+    python ./train_RayTune.py  --localSamples $localSamples --dataPath $dataPath --probeType $probeType --design $design --cellName $cellName --rayResult $wrkDir --numHparams $numHparams --nodes GPU --numGPU $numGPU --epochs $epochs --restorePath $restorePath --outPath $outPath --maxConcurrent $maxConcurrent
 
 
     echo "Log files will be moved to $restoreID submission folder"
@@ -115,6 +119,10 @@ else
     cp -r ./$outPath $restorePath
     rm -r ./$outPath
     cp submit-ray-cluster.sh train_RayTune.py $restorePath/submission-$SLURM_JOBID
+    
+    cp tune_summary_writer.py $restorePath/experiment
+    cd $restorePath/experiment
+    python ./tune_summary_writer.py --jobID $SLURM_JOBID --cellName $cellName --epochSize $globalSamples --maxConcurrent $maxConcurrent --numGPU $numGPU
     
 fi
 
